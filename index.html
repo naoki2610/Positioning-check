@@ -13,17 +13,33 @@
     }
     * { box-sizing: border-box; }
     body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; margin: 0; padding: 0; background: var(--bg); color: #1e293b; display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
-    header { background: var(--primary); color: white; padding: 12px 16px; font-weight: bold; font-size: 1.1rem; flex-shrink: 0; display: flex; justify-content: space-between; align-items: center; }
+    header { background: var(--primary); color: white; padding: 12px 16px; font-weight: bold; font-size: 1.1rem; flex-shrink: 0; display: flex; justify-content: space-between; align-items: center; z-index: 100; }
     
     .main-content { display: flex; flex-direction: column; flex-grow: 1; overflow: hidden; }
-    @media (min-width: 768px) { .main-content { flex-direction: row; } }
+    
+    /* PC/タブレット向けの横並びレイアウト */
+    @media (min-width: 768px) { 
+      .main-content { flex-direction: row; } 
+      .panel { width: 480px; flex-shrink: 0; height: 100%; order: 1; }
+      #map-wrapper { flex-grow: 1; height: 100%; order: 2; }
+      #btn_map_resize { display: none; } /* PCではリサイズボタン非表示 */
+    }
 
-    .panel { padding: 12px; overflow-y: auto; background: white; box-shadow: 2px 0 5px rgba(0,0,0,0.1); z-index: 10; display: flex; flex-direction: column; gap: 12px; }
-    @media (min-width: 768px) { .panel { width: 480px; flex-shrink: 0; height: 100%; } }
-    @media (max-width: 767px) { .panel { flex: 1 1 50%; min-height: 50%; } }
+    /* スマートフォン向けの縦並び（地図が上、パネルが下）レイアウト */
+    @media (max-width: 767px) { 
+      .main-content { flex-direction: column; } 
+      #map-wrapper { flex: 0 0 40vh; width: 100%; order: 1; transition: flex 0.3s ease; border-bottom: 3px solid #94a3b8; position: relative; z-index: 50; box-shadow: 0 2px 5px rgba(0,0,0,0.2); }
+      .panel { flex: 1; height: auto; overflow-y: auto; order: 2; padding-bottom: 40px; z-index: 10; }
+    }
 
-    #map-container { position: relative; flex-grow: 1; }
-    #map { width: 100%; height: 100%; z-index: 1; }
+    .panel { padding: 12px; background: white; display: flex; flex-direction: column; gap: 12px; }
+    
+    #map-wrapper { position: relative; }
+    #map { width: 100%; height: 100%; z-index: 1; background: #e2e8f0; }
+
+    /* 地図リサイズボタンのデザイン */
+    #btn_map_resize { position: absolute; bottom: 15px; left: 10px; z-index: 1000; background: rgba(255, 255, 255, 0.9); border: 2px solid var(--primary); color: var(--primary); padding: 6px 12px; border-radius: 20px; font-weight: bold; font-size: 0.85rem; box-shadow: 0 2px 4px rgba(0,0,0,0.3); cursor: pointer; transition: background 0.2s; }
+    #btn_map_resize:active { background: #e2e8f0; }
 
     .card { background: #f1f5f9; padding: 10px; border-radius: 6px; border: 1px solid #e2e8f0; }
     .card-title { font-weight: bold; font-size: 0.9rem; margin-bottom: 8px; color: #334155; display: flex; justify-content: space-between; align-items: center; }
@@ -69,12 +85,12 @@
       @page { size: A4 portrait; margin: 10mm; }
       body { background: white; height: auto; overflow: visible; display: block; }
       header { background: white !important; color: black !important; border-bottom: 2px solid #000; padding: 0 0 10px 0; margin-bottom: 15px; }
-      .btn, .tabs, .list-container, select, label, .card input { display: none !important; }
+      .btn, .tabs, .list-container, select, label, .card input, #btn_map_resize { display: none !important; }
       .card { border: 1px solid #000; background: transparent; box-shadow: none; break-inside: avoid; }
       .result-box { border: 2px solid #000; background: transparent !important; color: #000 !important; }
-      #map-container { height: 130mm !important; width: 100%; border: 2px solid #000; margin-top: 15px; page-break-inside: avoid; }
+      #map-wrapper { height: 130mm !important; width: 100%; border: 2px solid #000; margin-top: 15px; page-break-inside: avoid; }
       .leaflet-control-container { display: none; }
-      .panel { overflow: visible; width: 100%; }
+      .panel { overflow: visible; width: 100%; padding: 0; }
       .main-content { display: block; }
     }
   </style>
@@ -90,6 +106,13 @@
 </header>
 
 <div class="main-content">
+  <!-- スマホではここが先に表示される（order: 1） -->
+  <div id="map-wrapper">
+    <button id="btn_map_resize" onclick="toggleMapSize()">📐 地図を拡大</button>
+    <div id="map"></div>
+  </div>
+
+  <!-- スマホでは下部に表示されるパネル（order: 2） -->
   <div class="panel">
     <!-- 1. 座標入力エリア -->
     <div class="card" id="input_card">
@@ -139,20 +162,17 @@
           <input type="text" id="pt_name" value="P-1">
         </div>
         
-        <!-- モード1: 平面直角 (XY) -->
         <div id="mode_xy" class="flex-row" style="flex:1;">
           <div style="flex:1;"><label>X(北) [m]</label><input type="number" id="in_x" step="0.001" oninput="previewCoordinate()"></div>
           <div style="flex:1;"><label>Y(東) [m]</label><input type="number" id="in_y" step="0.001" oninput="previewCoordinate()"></div>
         </div>
 
-        <!-- モード2: 十進法 (DD) -->
         <div id="mode_dd" class="flex-row hidden" style="flex:1;">
-          <div style="flex:1;"><label>緯度 (Lat) [度]</label><input type="number" id="in_lat_dd" step="0.000001" placeholder="35.12345" oninput="previewCoordinate()"></div>
-          <div style="flex:1;"><label>経度 (Lon) [度]</label><input type="number" id="in_lon_dd" step="0.000001" placeholder="139.12345" oninput="previewCoordinate()"></div>
+          <div style="flex:1;"><label>緯度(Lat)</label><input type="number" id="in_lat_dd" step="0.000001" placeholder="35.12345" oninput="previewCoordinate()"></div>
+          <div style="flex:1;"><label>経度(Lon)</label><input type="number" id="in_lon_dd" step="0.000001" placeholder="139.12345" oninput="previewCoordinate()"></div>
         </div>
       </div>
 
-      <!-- モード3: 度分秒 (DMS) -->
       <div id="mode_dms" class="hidden" style="margin-bottom: 8px;">
         <div class="grid-2">
           <div>
@@ -174,7 +194,6 @@
         </div>
       </div>
 
-      <!-- リアルタイムプレビュー & 重複警告 -->
       <div id="convert_preview" class="preview-box">変換後: X=---, Y=---</div>
       <div id="dup_warning" class="warn-box">⚠️ 重複注意: 既存の点と近接しています。</div>
 
@@ -230,7 +249,6 @@
       <div id="area_result" class="result-box info">3点以上を選択してください</div>
     </div>
   </div>
-  <div id="map-container"><div id="map"></div></div>
 </div>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
@@ -251,7 +269,8 @@
   let selectedForDist = [];
   let selectedForArea = [];
   let currentMode = 'dist';
-  let tempX = null, tempY = null; // プレビュー用の内部保持座標
+  let tempX = null, tempY = null; 
+  let isMapExpanded = false; // 地図の拡縮状態フラグ
 
   if(localStorage.getItem('surveyPoints')) {
     points = JSON.parse(localStorage.getItem('surveyPoints'));
@@ -269,6 +288,24 @@
   
   let mapMarkers = {}, currentLine = null, currentPolygon = null, currentDistLabel = null; 
 
+  // --- 新機能：地図の拡大縮小トグル機能 ---
+  function toggleMapSize() {
+    isMapExpanded = !isMapExpanded;
+    const mapWrapper = document.getElementById('map-wrapper');
+    const btn = document.getElementById('btn_map_resize');
+    
+    if (isMapExpanded) {
+      mapWrapper.style.flex = '0 0 75vh'; // 画面の75%まで拡大
+      btn.innerHTML = '🔽 パネルを開く';
+    } else {
+      mapWrapper.style.flex = '0 0 40vh'; // 元の40%に戻す
+      btn.innerHTML = '📐 地図を拡大';
+    }
+    
+    // CSSアニメーションの完了を待ってLeafletのサイズを再計算させる
+    setTimeout(() => { map.invalidateSize(); }, 350);
+  }
+
   function getProjDef() {
     const origin = ZONE_ORIGINS[document.getElementById('zone_select').value] || ZONE_ORIGINS[2];
     return `+proj=tmerc +lat_0=${origin[0]} +lon_0=${origin[1]} +k=0.9999 +x_0=0 +y_0=0 +ellps=GRS80 +units=m +no_defs`;
@@ -283,7 +320,6 @@
     previewCoordinate();
   }
 
-  // 入力値からX, Yを計算してプレビュー＆重複チェック
   function previewCoordinate() {
     const mode = document.getElementById('input_mode').value;
     tempX = null; tempY = null;
@@ -322,7 +358,6 @@
       }
     } catch(e) { previewBox.innerText = `変換エラー: 入力値を確認してください`; }
 
-    // 重複チェック
     const warnBox = document.getElementById('dup_warning');
     const radius = parseFloat(document.getElementById('dup_radius').value);
     if(radius === 0 || tempX === null) { warnBox.style.display = 'none'; return; }
@@ -341,7 +376,6 @@
     navigator.geolocation.getCurrentPosition(
       (pos) => {
         const lat = pos.coords.latitude; const lon = pos.coords.longitude;
-        // 測位したら強制的に十進法モードに切り替えて値をセット
         document.getElementById('input_mode').value = 'dd';
         switchInputMode();
         document.getElementById('in_lat_dd').value = lat.toFixed(6);
@@ -358,7 +392,7 @@
   }
 
   function addPoint() {
-    previewCoordinate(); // 最新の状態に更新
+    previewCoordinate();
     if(tempX === null || tempY === null) return alert("座標を正しく入力してください。");
     
     const name = document.getElementById('pt_name').value.trim() || `P-${Date.now().toString().slice(-4)}`;
@@ -370,7 +404,6 @@
       const match = name.match(/^(.*?)(\d+)$/);
       if(match) document.getElementById('pt_name').value = `${match[1]}${parseInt(match[2]) + 1}`;
       
-      // 入力欄をクリア（直前モードに応じる）
       const mode = document.getElementById('input_mode').value;
       if(mode==='xy'){ document.getElementById('in_x').value=''; document.getElementById('in_y').value=''; }
       else if(mode==='dd'){ document.getElementById('in_lat_dd').value=''; document.getElementById('in_lon_dd').value=''; }
@@ -382,7 +415,6 @@
     } catch (e) { alert("変換でエラーが発生しました。"); }
   }
 
-  // --- 以下は前バージョンと同様の計算・描画ロジック ---
   function savePoints() { localStorage.setItem('surveyPoints', JSON.stringify(points)); }
 
   function deletePoint(id) {
