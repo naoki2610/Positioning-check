@@ -1,4 +1,4 @@
-const CACHE_NAME = 'survey-app-v1.4'; // ←ここを v1.4 に変更
+const CACHE_NAME = 'survey-app-v1.6'; // ← v1.6 に更新
 const ASSETS_TO_CACHE = [
   './index.html',
   './manifest.json',
@@ -11,32 +11,16 @@ const ASSETS_TO_CACHE = [
 ];
 
 self.addEventListener('install', (event) => {
-  event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => {
-      return cache.addAll(ASSETS_TO_CACHE);
-    })
-  );
+  event.waitUntil(caches.open(CACHE_NAME).then((cache) => cache.addAll(ASSETS_TO_CACHE)));
   self.skipWaiting();
 });
 
 self.addEventListener('activate', (event) => {
-  event.waitUntil(
-    caches.keys().then((cacheNames) => {
-      return Promise.all(
-        cacheNames.map((cache) => {
-          if (cache !== CACHE_NAME) {
-            return caches.delete(cache);
-          }
-        })
-      );
-    })
-  );
+  event.waitUntil(caches.keys().then((keys) => Promise.all(
+    keys.map((k) => k !== CACHE_NAME ? caches.delete(k) : null)
+  )));
 });
 
 self.addEventListener('fetch', (event) => {
-  event.respondWith(
-    caches.match(event.request).then((response) => {
-      return response || fetch(event.request);
-    })
-  );
+  event.respondWith(caches.match(event.request).then((res) => res || fetch(event.request)));
 });
