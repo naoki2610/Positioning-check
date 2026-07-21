@@ -57,16 +57,19 @@
     .hidden { display: none; }
     .flex-row { display: flex; gap: 8px; align-items: flex-end; }
 
-    /* 地図上のラベル（明示機能）のデザイン */
-    .custom-tooltip { border: 2px solid #ea580c; background: rgba(255,255,255,0.9); box-shadow: 0 2px 4px rgba(0,0,0,0.2); }
+    /* 地図上のラベルデザイン */
+    .custom-tooltip { border: 2px solid #ea580c; background: rgba(255,255,255,0.95); box-shadow: 0 2px 4px rgba(0,0,0,0.2); border-radius: 6px; padding: 4px; }
     .dist-label-content { background: rgba(255,255,255,0.95); border: 2px solid #1e3a8a; padding: 4px 8px; border-radius: 6px; font-weight: bold; color: #1e3a8a; box-shadow: 0 2px 4px rgba(0,0,0,0.3); white-space: nowrap; font-size: 1rem; }
+    
+    /* 極小ラベル（未選択時用・透過＆枠なし） */
+    .tiny-tooltip { background: transparent !important; border: none !important; box-shadow: none !important; font-size: 0.85rem; font-weight: 900; color: #1e3a8a; text-shadow: 2px 2px 0 #fff, -2px -2px 0 #fff, 2px -2px 0 #fff, -2px 2px 0 #fff; padding: 0; }
+    .leaflet-tooltip.tiny-tooltip::before { display: none; } /* 吹き出しの尻尾を消す */
 
-    /* レポート保存（印刷・PDF出力）用のレイアウト */
+    /* レポート保存用レイアウト */
     @media print {
       @page { size: A4 portrait; margin: 10mm; }
       body { background: white; height: auto; overflow: visible; display: block; }
       header { background: white !important; color: black !important; border-bottom: 2px solid #000; padding: 0 0 10px 0; margin-bottom: 15px; }
-      /* 不要なUIを隠す */
       .btn, .tabs, .list-container, #pt_name, #pt_x, #pt_y, select, label { display: none !important; }
       .card { border: 1px solid #000; background: transparent; box-shadow: none; break-inside: avoid; }
       .result-box { border: 2px solid #000; background: transparent !important; color: #000 !important; }
@@ -82,7 +85,6 @@
 <header>
   <div>📍 現場測量アシスト</div>
   <div style="display: flex; gap: 5px;">
-    <!-- 帳票保存ボタンを追加 -->
     <button class="btn btn-outline" style="width: auto; padding: 4px 8px; font-size: 0.8rem;" onclick="window.print()">🖨️ レポート保存</button>
     <button class="btn btn-outline" style="width: auto; padding: 4px 8px; font-size: 0.8rem;" onclick="exportCSV()">CSV</button>
   </div>
@@ -90,7 +92,6 @@
 
 <div class="main-content">
   <div class="panel">
-    
     <!-- 1. 座標入力エリア -->
     <div class="card" id="input_card">
       <div class="card-title">① 座標の取得と保存</div>
@@ -216,7 +217,7 @@
   let mapMarkers = {};
   let currentLine = null;
   let currentPolygon = null;
-  let currentDistLabel = null; // 距離ラベルの管理用
+  let currentDistLabel = null; 
 
   function getProjDef() {
     const zone = document.getElementById('zone_select').value;
@@ -325,6 +326,7 @@
       document.getElementById('dist_result').className = "result-box info";
       document.getElementById('dist_result').innerText = "2点を選択してください";
       document.getElementById('dist_details').innerHTML = "ΔX: --- | ΔY: ---<br>方位角: ---";
+      renderMap(); // 選択解除時の再描画
       return;
     }
 
@@ -345,18 +347,14 @@
     else if (dist <= tol) { res.className = "result-box pass"; res.innerText = `較差: ${(dist * 1000).toFixed(1)} mm (OK)`; } 
     else { res.className = "result-box fail"; res.innerText = `較差: ${(dist * 1000).toFixed(1)} mm (NG)`; }
 
-    // 線と中央の距離ラベルの描画（明示機能）
     currentLine = L.polyline([[p1.lat, p1.lon], [p2.lat, p2.lon]], {color: dist<=tol||tol>100 ? 'blue':'red', weight: 4}).addTo(map);
     const midLat = (p1.lat + p2.lat) / 2;
     const midLon = (p1.lon + p2.lon) / 2;
     currentDistLabel = L.marker([midLat, midLon], {
-      icon: L.divIcon({
-        className: 'dist-label-container',
-        html: `<div class="dist-label-content">S = ${dist.toFixed(3)} m</div>`,
-        iconSize: [null, null]
-      })
+      icon: L.divIcon({ className: 'dist-label-container', html: `<div class="dist-label-content">S = ${dist.toFixed(3)} m</div>`, iconSize: [null, null] })
     }).addTo(map);
 
+    renderMap(); // ピンの描画（重なり回避アルゴリズム込み）
     map.fitBounds(currentLine.getBounds(), {padding:[80,80], maxZoom: 18});
   }
 
@@ -370,6 +368,7 @@
       document.getElementById('area_result').className = "result-box info";
       document.getElementById('area_result').innerText = "3点以上を選択してください";
       if(pts.length === 2) currentPolygon = L.polyline([[pts[0].lat, pts[0].lon], [pts[1].lat, pts[1].lon]], {color:'green', dashArray:'5,5'}).addTo(map);
+      renderMap();
       return;
     }
 
@@ -383,27 +382,79 @@
     document.getElementById('area_result').className = "result-box pass";
     document.getElementById('area_result').innerText = `面積: ${area.toFixed(3)} ㎡ (${(area * 0.3025).toFixed(2)} 坪)`;
     currentPolygon = L.polygon(pts.map(p => [p.lat, p.lon]), {color: 'green', weight: 3, fillColor: '#86efac', fillOpacity: 0.5}).addTo(map);
+    renderMap();
     map.fitBounds(currentPolygon.getBounds(), {padding:[80,80], maxZoom: 18});
   }
 
   function clearAreaSelection() { selectedForArea = []; renderList(); calcArea(); }
 
+  // 地図ピンの描画（重なり回避アルゴリズム）
   function renderMap() {
     for(let id in mapMarkers) map.removeLayer(mapMarkers[id]);
     mapMarkers = {}; let bounds = [];
+
+    // 重なり回避の方向決定ロジック
+    let p1_dist = null, p2_dist = null;
+    let dir1 = 'top', dir2 = 'bottom';
+    if (currentMode === 'dist' && selectedForDist.length === 2) {
+      p1_dist = points.find(p => p.id === selectedForDist[0]);
+      p2_dist = points.find(p => p.id === selectedForDist[1]);
+      if (p1_dist && p2_dist) {
+        let dLon = Math.abs(p1_dist.lon - p2_dist.lon);
+        let dLat = Math.abs(p1_dist.lat - p2_dist.lat);
+        if (dLon > dLat) {
+          // 東西に離れている場合は左右にラベルを振る
+          dir1 = p1_dist.lon > p2_dist.lon ? 'right' : 'left';
+          dir2 = p2_dist.lon > p1_dist.lon ? 'right' : 'left';
+        } else {
+          // 南北に離れている場合は上下にラベルを振る
+          dir1 = p1_dist.lat > p2_dist.lat ? 'top' : 'bottom';
+          dir2 = p2_dist.lat > p1_dist.lat ? 'top' : 'bottom';
+        }
+      }
+    }
+
     points.forEach(p => {
-      let isSel = (currentMode === 'dist' && selectedForDist.includes(p.id)) || (currentMode === 'area' && selectedForArea.includes(p.id));
-      
-      // 選択中の点はツールチップに座標を明示
-      let tooltipContent = p.name;
-      if(isSel) {
-        tooltipContent = `<div style="text-align:left; line-height:1.3;"><b>${p.name}</b><br><span style="font-size:0.85rem;">X: ${p.x.toFixed(3)}<br>Y: ${p.y.toFixed(3)}</span></div>`;
+      let isDistSel = currentMode === 'dist' && selectedForDist.includes(p.id);
+      let isAreaSel = currentMode === 'area' && selectedForArea.includes(p.id);
+      let isSel = isDistSel || isAreaSel;
+
+      let tooltipContent = ''; let tipClass = ''; let tipDir = 'right'; let tipOffset = [0, 0];
+
+      if (isSel) {
+        // 選択中は座標付きラベルを表示（自動整列）
+        tooltipContent = `<div style="text-align:center; line-height:1.2;"><b>${p.name}</b><br><span style="font-size:0.75rem;">X: ${p.x.toFixed(3)}<br>Y: ${p.y.toFixed(3)}</span></div>`;
+        tipClass = 'custom-tooltip';
+        if (isDistSel && p1_dist && p2_dist) {
+          tipDir = (p.id === p1_dist.id) ? dir1 : dir2;
+          tipOffset = tipDir === 'top' ? [0, -5] : tipDir === 'bottom' ? [0, 5] : tipDir === 'left' ? [-5, 0] : [5, 0];
+        } else {
+          tipDir = 'top'; tipOffset = [0, -5];
+        }
+      } else {
+        // 未選択時は名前だけの極小ラベルを表示
+        tooltipContent = p.name;
+        tipClass = 'tiny-tooltip';
+        tipDir = 'right'; tipOffset = [5, 0];
       }
 
-      const m = L.circleMarker([p.lat, p.lon], { radius: isSel ? 8 : 5, fillColor: isSel ? '#ea580c' : '#1e3a8a', color: '#fff', weight: 2, fillOpacity: 1 })
-        .bindTooltip(tooltipContent, {permanent: isSel, direction: 'right', className: isSel ? 'custom-tooltip' : ''}).addTo(map);
+      const m = L.circleMarker([p.lat, p.lon], { radius: isSel ? 7 : 4, fillColor: isSel ? '#ea580c' : '#3b82f6', color: '#fff', weight: 2, fillOpacity: 1 });
+      
+      m.bindTooltip(tooltipContent, { permanent: true, direction: tipDir, className: tipClass, offset: tipOffset });
+
+      // ★新機能：タップ時の地図上削除メニュー
+      m.bindPopup(`
+        <div style="text-align:center; padding:2px; min-width:110px;">
+          <b style="font-size:1.1rem;">${p.name}</b><br>
+          <span style="font-size:0.8rem; color:#64748b;">X: ${p.x.toFixed(3)}<br>Y: ${p.y.toFixed(3)}</span><br>
+          <button onclick="deletePoint('${p.id}')" style="margin-top:8px; width:100%; background:#ef4444; color:white; border:none; padding:6px; border-radius:4px; font-weight:bold; cursor:pointer;">🗑️ 地図から削除</button>
+        </div>
+      `);
+
+      m.addTo(map);
       mapMarkers[p.id] = m; bounds.push([p.lat, p.lon]);
     });
+
     if(bounds.length > 0 && selectedForDist.length === 0 && selectedForArea.length === 0) { map.fitBounds(bounds, {padding:[50,50], maxZoom:18}); }
   }
 
