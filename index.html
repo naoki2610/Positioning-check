@@ -27,7 +27,7 @@
     @media (max-width: 767px) { #map-container { flex: 1 1 50%; min-height: 300px; } }
 
     .card { background: #f1f5f9; padding: 10px; border-radius: 6px; border: 1px solid #e2e8f0; }
-    .card-title { font-weight: bold; font-size: 0.9rem; margin-bottom: 8px; color: #334155; }
+    .card-title { font-weight: bold; font-size: 0.9rem; margin-bottom: 8px; color: #334155; display: flex; justify-content: space-between; align-items: center; }
     label { font-size: 0.8rem; font-weight: bold; color: #475569; display: block; margin-bottom: 2px; }
     input, select, button { width: 100%; padding: 8px; border: 1px solid #cbd5e1; border-radius: 4px; font-size: 0.95rem; }
     
@@ -36,6 +36,7 @@
     .btn { background: var(--secondary); color: white; border: none; font-weight: bold; cursor: pointer; transition: background 0.2s; padding: 10px; }
     .btn-green { background: var(--pass); }
     .btn-outline { background: white; color: var(--secondary); border: 1px solid var(--secondary); }
+    .btn-gps { border-color: #ea580c; color: #ea580c; background: white; }
     
     .tabs { display: flex; border-bottom: 2px solid #cbd5e1; margin-bottom: 10px; }
     .tab { flex: 1; text-align: center; padding: 8px; font-weight: bold; color: #64748b; cursor: pointer; background: #e2e8f0; border-radius: 4px 4px 0 0; border: 1px solid transparent; border-bottom: none; margin-right: 2px; }
@@ -57,15 +58,11 @@
     .hidden { display: none; }
     .flex-row { display: flex; gap: 8px; align-items: flex-end; }
 
-    /* 地図上のラベルデザイン */
     .custom-tooltip { border: 2px solid #ea580c; background: rgba(255,255,255,0.95); box-shadow: 0 2px 4px rgba(0,0,0,0.2); border-radius: 6px; padding: 4px; }
     .dist-label-content { background: rgba(255,255,255,0.95); border: 2px solid #1e3a8a; padding: 4px 8px; border-radius: 6px; font-weight: bold; color: #1e3a8a; box-shadow: 0 2px 4px rgba(0,0,0,0.3); white-space: nowrap; font-size: 1rem; }
-    
-    /* 極小ラベル（未選択時用・透過＆枠なし） */
     .tiny-tooltip { background: transparent !important; border: none !important; box-shadow: none !important; font-size: 0.85rem; font-weight: 900; color: #1e3a8a; text-shadow: 2px 2px 0 #fff, -2px -2px 0 #fff, 2px -2px 0 #fff, -2px 2px 0 #fff; padding: 0; }
-    .leaflet-tooltip.tiny-tooltip::before { display: none; } /* 吹き出しの尻尾を消す */
+    .leaflet-tooltip.tiny-tooltip::before { display: none; }
 
-    /* レポート保存用レイアウト */
     @media print {
       @page { size: A4 portrait; margin: 10mm; }
       body { background: white; height: auto; overflow: visible; display: block; }
@@ -94,7 +91,12 @@
   <div class="panel">
     <!-- 1. 座標入力エリア -->
     <div class="card" id="input_card">
-      <div class="card-title">① 座標の取得と保存</div>
+      <div class="card-title">
+        ① 座標の取得と保存
+        <!-- GPS測位ボタン -->
+        <button id="btn_gps" class="btn btn-gps" style="width: auto; padding: 4px 8px; font-size: 0.8rem;" onclick="getCurrentGNSS()">🛰️ 現在地を取得</button>
+      </div>
+      
       <div class="grid-2" style="margin-bottom: 8px;">
         <div>
           <label>座標系</label>
@@ -203,7 +205,7 @@
     points = JSON.parse(localStorage.getItem('surveyPoints'));
     if(points.length > 0) {
       const lastPt = points[points.length - 1];
-      const match = lastPt.name.match(/^P-(\d+)$/);
+      const match = lastPt.name.match(/^(?:P|GNSS)-(\d+)$/);
       if(match) pointCounter = parseInt(match[1]) + 1;
       document.getElementById('pt_name').value = `P-${pointCounter}`;
       document.getElementById('pt_x').value = lastPt.x;
@@ -223,6 +225,68 @@
     const zone = document.getElementById('zone_select').value;
     const origin = ZONE_ORIGINS[zone] || ZONE_ORIGINS[2];
     return `+proj=tmerc +lat_0=${origin[0]} +lon_0=${origin[1]} +k=0.9999 +x_0=0 +y_0=0 +ellps=GRS80 +units=m +no_defs`;
+  }
+
+  // --- 新機能：現在地の測位（GNSS連携） ---
+  function getCurrentGNSS() {
+    const btn = document.getElementById('btn_gps');
+    if (!navigator.geolocation) {
+      alert("お使いのブラウザは位置情報に対応していません。");
+      return;
+    }
+    
+    btn.innerText = "⏳ 測位中...";
+    btn.style.backgroundColor = "#fff7ed";
+
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        const lat = position.coords.latitude;
+        const lon = position.coords.longitude;
+        const accuracy = position.coords.accuracy; // 誤差(メートル)
+
+        try {
+          // 緯度経度から平面直角座標(X, Y)へ逆変換（Proj4jsは[経度, 緯度]の順）
+          const xy = proj4('EPSG:4326', getProjDef(), [lon, lat]);
+          const y = xy[0]; // 東西(Easting)
+          const x = xy[1]; // 南北(Northing)
+
+          document.getElementById('pt_x').value = x.toFixed(3);
+          document.getElementById('pt_y').value = y.toFixed(3);
+          
+          // 点名がデフォルトのままならGNSS用に変更
+          const currentName = document.getElementById('pt_name').value;
+          if(currentName.startsWith("P-")) {
+            document.getElementById('pt_name').value = `GNSS-${pointCounter}`;
+          }
+
+          btn.innerText = "🛰️ 現在地を取得";
+          btn.style.backgroundColor = "white";
+
+          // スマホのGPS精度を表示（RTKレシーバー連携の確認用）
+          alert(`現在地を測位しました。\n・推定誤差(精度): 約 ${accuracy.toFixed(2)} m\n※値を確認して「＋ ストックに追加」を押してください。`);
+          
+          checkDuplicate();
+          
+          // 地図を現在地にジャンプ
+          map.setView([lat, lon], 17);
+
+        } catch (e) {
+          alert("座標系の変換に失敗しました。");
+          btn.innerText = "🛰️ 現在地を取得";
+          btn.style.backgroundColor = "white";
+        }
+      },
+      (error) => {
+        let msg = "位置情報の取得に失敗しました。";
+        if (error.code === 1) msg = "位置情報の利用が許可されていません。スマホの設定でブラウザの「位置情報」をオンにしてください。";
+        if (error.code === 2) msg = "電波状況が悪く、位置が特定できません。空の開けた場所で再試行してください。";
+        if (error.code === 3) msg = "測位がタイムアウトしました。";
+        alert(msg);
+        btn.innerText = "🛰️ 現在地を取得";
+        btn.style.backgroundColor = "white";
+      },
+      { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
+    );
   }
 
   function checkDuplicate() {
@@ -252,7 +316,7 @@
       const lonlat = proj4(getProjDef(), 'EPSG:4326', [y, x]);
       points.push({ id: Date.now().toString(), name: name, x: x, y: y, lat: lonlat[1], lon: lonlat[0] });
       savePoints();
-      const match = name.match(/^P-(\d+)$/);
+      const match = name.match(/^(?:P|GNSS)-(\d+)$/);
       if(match) { pointCounter = parseInt(match[1]) + 1; document.getElementById('pt_name').value = `P-${pointCounter}`; } 
       else { document.getElementById('pt_name').value = ""; }
       document.getElementById('dup_warning').style.display = 'none';
@@ -326,7 +390,7 @@
       document.getElementById('dist_result').className = "result-box info";
       document.getElementById('dist_result').innerText = "2点を選択してください";
       document.getElementById('dist_details').innerHTML = "ΔX: --- | ΔY: ---<br>方位角: ---";
-      renderMap(); // 選択解除時の再描画
+      renderMap(); 
       return;
     }
 
@@ -354,7 +418,7 @@
       icon: L.divIcon({ className: 'dist-label-container', html: `<div class="dist-label-content">S = ${dist.toFixed(3)} m</div>`, iconSize: [null, null] })
     }).addTo(map);
 
-    renderMap(); // ピンの描画（重なり回避アルゴリズム込み）
+    renderMap();
     map.fitBounds(currentLine.getBounds(), {padding:[80,80], maxZoom: 18});
   }
 
@@ -388,12 +452,10 @@
 
   function clearAreaSelection() { selectedForArea = []; renderList(); calcArea(); }
 
-  // 地図ピンの描画（重なり回避アルゴリズム）
   function renderMap() {
     for(let id in mapMarkers) map.removeLayer(mapMarkers[id]);
     mapMarkers = {}; let bounds = [];
 
-    // 重なり回避の方向決定ロジック
     let p1_dist = null, p2_dist = null;
     let dir1 = 'top', dir2 = 'bottom';
     if (currentMode === 'dist' && selectedForDist.length === 2) {
@@ -403,11 +465,9 @@
         let dLon = Math.abs(p1_dist.lon - p2_dist.lon);
         let dLat = Math.abs(p1_dist.lat - p2_dist.lat);
         if (dLon > dLat) {
-          // 東西に離れている場合は左右にラベルを振る
           dir1 = p1_dist.lon > p2_dist.lon ? 'right' : 'left';
           dir2 = p2_dist.lon > p1_dist.lon ? 'right' : 'left';
         } else {
-          // 南北に離れている場合は上下にラベルを振る
           dir1 = p1_dist.lat > p2_dist.lat ? 'top' : 'bottom';
           dir2 = p2_dist.lat > p1_dist.lat ? 'top' : 'bottom';
         }
@@ -422,7 +482,6 @@
       let tooltipContent = ''; let tipClass = ''; let tipDir = 'right'; let tipOffset = [0, 0];
 
       if (isSel) {
-        // 選択中は座標付きラベルを表示（自動整列）
         tooltipContent = `<div style="text-align:center; line-height:1.2;"><b>${p.name}</b><br><span style="font-size:0.75rem;">X: ${p.x.toFixed(3)}<br>Y: ${p.y.toFixed(3)}</span></div>`;
         tipClass = 'custom-tooltip';
         if (isDistSel && p1_dist && p2_dist) {
@@ -432,7 +491,6 @@
           tipDir = 'top'; tipOffset = [0, -5];
         }
       } else {
-        // 未選択時は名前だけの極小ラベルを表示
         tooltipContent = p.name;
         tipClass = 'tiny-tooltip';
         tipDir = 'right'; tipOffset = [5, 0];
@@ -442,7 +500,6 @@
       
       m.bindTooltip(tooltipContent, { permanent: true, direction: tipDir, className: tipClass, offset: tipOffset });
 
-      // ★新機能：タップ時の地図上削除メニュー
       m.bindPopup(`
         <div style="text-align:center; padding:2px; min-width:110px;">
           <b style="font-size:1.1rem;">${p.name}</b><br>
