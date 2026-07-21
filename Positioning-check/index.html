@@ -1,0 +1,529 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>測量・点検ツール (ストック方式)</title>
+  <link rel="manifest" href="./manifest.json">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <style>
+    :root {
+      --primary: #1e3a8a;
+      --secondary: #3b82f6;
+      --bg: #f8fafc;
+      --pass: #15803d;
+      --fail: #b91c1c;
+      --warn: #ca8a04;
+    }
+    * { box-sizing: border-box; }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; margin: 0; padding: 0; background: var(--bg); color: #1e293b; display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
+    header { background: var(--primary); color: white; padding: 12px 16px; font-weight: bold; font-size: 1.1rem; flex-shrink: 0; display: flex; justify-content: space-between; align-items: center; }
+    
+    .main-content { display: flex; flex-direction: column; flex-grow: 1; overflow: hidden; }
+    @media (min-width: 768px) { .main-content { flex-direction: row; } }
+
+    /* Left/Top Panel */
+    .panel { padding: 12px; overflow-y: auto; background: white; box-shadow: 2px 0 5px rgba(0,0,0,0.1); z-index: 10; display: flex; flex-direction: column; gap: 12px; }
+    @media (min-width: 768px) { .panel { width: 450px; flex-shrink: 0; height: 100%; } }
+    @media (max-width: 767px) { .panel { flex: 1 1 50%; min-height: 50%; } }
+
+    /* Map Area */
+    #map-container { position: relative; flex-grow: 1; }
+    #map { width: 100%; height: 100%; z-index: 1; }
+    @media (max-width: 767px) { #map-container { flex: 1 1 50%; min-height: 300px; } }
+
+    /* Forms & Cards */
+    .card { background: #f1f5f9; padding: 10px; border-radius: 6px; border: 1px solid #e2e8f0; }
+    .card-title { font-weight: bold; font-size: 0.9rem; margin-bottom: 8px; color: #334155; display: flex; justify-content: space-between; }
+    label { font-size: 0.8rem; font-weight: bold; color: #475569; display: block; margin-bottom: 2px; }
+    input, select, button { width: 100%; padding: 8px; border: 1px solid #cbd5e1; border-radius: 4px; font-size: 0.95rem; }
+    
+    .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    .grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; }
+    
+    .btn { background: var(--secondary); color: white; border: none; font-weight: bold; cursor: pointer; transition: background 0.2s; padding: 10px; }
+    .btn:hover { background: #2563eb; }
+    .btn-green { background: var(--pass); }
+    .btn-green:hover { background: #166534; }
+    .btn-outline { background: white; color: var(--secondary); border: 1px solid var(--secondary); }
+    
+    /* Tabs */
+    .tabs { display: flex; border-bottom: 2px solid #cbd5e1; margin-bottom: 10px; }
+    .tab { flex: 1; text-align: center; padding: 8px; font-weight: bold; color: #64748b; cursor: pointer; background: #e2e8f0; border-radius: 4px 4px 0 0; border: 1px solid transparent; border-bottom: none; margin-right: 2px; }
+    .tab.active { background: white; color: var(--primary); border-color: #cbd5e1; margin-bottom: -2px; border-bottom-color: white; }
+
+    /* Results */
+    .result-box { padding: 10px; border-radius: 6px; text-align: center; font-weight: bold; font-size: 1.1rem; margin-top: 8px; }
+    .pass { background: #dcfce7; color: var(--pass); border: 1px solid #86efac; }
+    .fail { background: #fee2e2; color: var(--fail); border: 1px solid #fca5a5; }
+    .info { background: #e0f2fe; color: #0369a1; border: 1px solid #bae6fd; }
+    .warn-box { background: #fef08a; color: var(--warn); padding: 8px; border-radius: 4px; font-size: 0.85rem; font-weight: bold; display: none; margin-bottom: 8px; border: 1px solid #fde047; }
+
+    /* Stock List */
+    .list-container { max-height: 150px; overflow-y: auto; background: white; border: 1px solid #cbd5e1; border-radius: 4px; }
+    .list-item { display: flex; justify-content: space-between; align-items: center; padding: 6px 10px; border-bottom: 1px solid #f1f5f9; cursor: pointer; }
+    .list-item:last-child { border-bottom: none; }
+    .list-item:hover { background: #f8fafc; }
+    .list-item.selected { background: #e0f2fe; border-left: 3px solid var(--secondary); }
+    .list-item-name { font-weight: bold; width: 60px; }
+    .list-item-coords { font-size: 0.8rem; color: #64748b; font-family: monospace; }
+    .list-item-del { color: var(--fail); cursor: pointer; padding: 4px; font-size: 1.2rem; line-height: 1; }
+
+    .hidden { display: none; }
+    
+    /* Utility */
+    .flex-row { display: flex; gap: 8px; align-items: flex-end; }
+  </style>
+</head>
+<body>
+
+<header>
+  <div>📍 現場測量アシスト</div>
+  <button class="btn btn-outline" style="width: auto; padding: 4px 8px; font-size: 0.8rem;" onclick="exportCSV()">CSV出力</button>
+</header>
+
+<div class="main-content">
+  <div class="panel">
+    
+    <!-- 1. 座標入力・ストック追加エリア -->
+    <div class="card">
+      <div class="card-title">① 座標の取得と保存</div>
+      
+      <!-- 系と重複アラート設定 -->
+      <div class="grid-2" style="margin-bottom: 8px;">
+        <div>
+          <label>座標系</label>
+          <select id="zone_select">
+            <option value="1">第1系</option>
+            <option value="2" selected>第2系(九州)</option>
+            <option value="9">第9系(関東)</option>
+          </select>
+        </div>
+        <div>
+          <label>重複チェック(半径)</label>
+          <select id="dup_radius">
+            <option value="0">チェックしない</option>
+            <option value="0.5">0.5 m 以内</option>
+            <option value="1.0" selected>1.0 m 以内</option>
+            <option value="5.0">5.0 m 以内</option>
+          </select>
+        </div>
+      </div>
+
+      <div id="dup_warning" class="warn-box">⚠️ 重複の可能性: 既存の点(〇〇)と近接しています。</div>
+
+      <div class="flex-row">
+        <div style="width: 80px;">
+          <label>点名</label>
+          <input type="text" id="pt_name" value="P-1">
+        </div>
+        <div style="flex:1;">
+          <label>X (m) [北]</label>
+          <input type="number" id="pt_x" value="0.000" step="0.001" oninput="checkDuplicate()">
+        </div>
+        <div style="flex:1;">
+          <label>Y (m) [東]</label>
+          <input type="number" id="pt_y" value="0.000" step="0.001" oninput="checkDuplicate()">
+        </div>
+      </div>
+      <button class="btn btn-green" style="margin-top: 10px;" onclick="addPoint()">＋ この座標をストックに追加</button>
+    </div>
+
+    <!-- 2. ストック一覧エリア -->
+    <div>
+      <label>② ストック済みの座標 (タップで選択)</label>
+      <div class="list-container" id="stock_list">
+        <!-- JSでリスト描画 -->
+      </div>
+      <div style="text-align: right; margin-top: 4px;">
+        <button class="btn" style="background: #ef4444; width: auto; padding: 4px 8px; font-size:0.8rem;" onclick="clearAllPoints()">全削除</button>
+      </div>
+    </div>
+
+    <!-- 3. 計算モード切替 -->
+    <div class="tabs">
+      <div class="tab active" id="tab_dist" onclick="switchTab('dist')">2点間距離</div>
+      <div class="tab" id="tab_area" onclick="switchTab('area')">面積計算(座標法)</div>
+    </div>
+
+    <!-- 距離計算ビュー -->
+    <div id="view_dist">
+      <p style="font-size: 0.85rem; color: #475569; margin: 0 0 8px 0;">上のリストから <b>2つ</b> の点を選んでください。</p>
+      <div class="grid-2">
+        <div class="card" style="padding: 6px;">選択1: <strong id="sel1_name">未選択</strong></div>
+        <div class="card" style="padding: 6px;">選択2: <strong id="sel2_name">未選択</strong></div>
+      </div>
+      
+      <div style="margin-top:8px;">
+        <label>較差許容値</label>
+        <select id="tolerance" onchange="calcDistance()">
+          <option value="0.010">10 mm (1-2級)</option>
+          <option value="0.020" selected>20 mm (3級/RTK)</option>
+          <option value="0.030">30 mm (4級)</option>
+          <option value="999.0">判定なし(距離のみ)</option>
+        </select>
+      </div>
+
+      <div id="dist_result" class="result-box info">点を選んでください</div>
+      <div style="font-size: 0.85rem; color: #475569; margin-top: 4px;" id="dist_details">
+        ΔX: --- | ΔY: ---<br>方位角: ---
+      </div>
+    </div>
+
+    <!-- 面積計算ビュー -->
+    <div id="view_area" class="hidden">
+      <p style="font-size: 0.85rem; color: #475569; margin: 0 0 8px 0;">上のリストから <b>3つ以上</b> の点を順に選んでください。(最後は自動閉合)</p>
+      <div class="card" style="padding: 6px; min-height: 40px; font-size: 0.9rem;" id="area_selection">
+        未選択
+      </div>
+      <div style="text-align: right; margin-top: 4px;">
+        <button class="btn btn-outline" style="width:auto; padding:4px 8px; font-size:0.8rem;" onclick="clearAreaSelection()">選択クリア</button>
+      </div>
+      <div id="area_result" class="result-box info">面積: --- ㎡</div>
+    </div>
+
+  </div>
+
+  <div id="map-container">
+    <div id="map"></div>
+  </div>
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/proj4js/2.9.0/proj4.js"></script>
+<script>
+  // --- Constants & Init ---
+  const ZONE_ORIGINS = {
+    1: [33, 129.5], 2: [33, 131.0], 9: [36, 139.8333] // 簡略化、必要に応じて追加
+  };
+  let points = []; // Array of { id, name, x, y, lat, lon }
+  let pointCounter = 1;
+  let selectedForDist = []; // max 2
+  let selectedForArea = []; // multiple
+  let currentMode = 'dist'; // 'dist' or 'area'
+
+  // Load from LocalStorage
+  if(localStorage.getItem('surveyPoints')) {
+    points = JSON.parse(localStorage.getItem('surveyPoints'));
+    if(points.length > 0) {
+      const lastPt = points[points.length - 1];
+      const match = lastPt.name.match(/^P-(\d+)$/);
+      if(match) pointCounter = parseInt(match[1]) + 1;
+      document.getElementById('pt_name').value = `P-${pointCounter}`;
+    }
+  }
+
+  // Init Map
+  const map = L.map('map').setView([31.58, 130.55], 13);
+  L.tileLayer('https://cyberjapandata.gsi.go.jp/xyz/std/{z}/{x}/{y}.png', { maxZoom: 18 }).addTo(map);
+  let mapMarkers = {};
+  let currentLine = null;
+  let currentPolygon = null;
+
+  // --- Functions ---
+  function getProjDef() {
+    const zone = document.getElementById('zone_select').value;
+    const origin = ZONE_ORIGINS[zone] || ZONE_ORIGINS[2];
+    return `+proj=tmerc +lat_0=${origin[0]} +lon_0=${origin[1]} +k=0.9999 +x_0=0 +y_0=0 +ellps=GRS80 +units=m +no_defs`;
+  }
+
+  function checkDuplicate() {
+    const rStr = document.getElementById('dup_radius').value;
+    if(rStr == "0") { document.getElementById('dup_warning').style.display = 'none'; return; }
+    
+    const radius = parseFloat(rStr);
+    const x = parseFloat(document.getElementById('pt_x').value) || 0;
+    const y = parseFloat(document.getElementById('pt_y').value) || 0;
+    
+    let dupName = null;
+    for(let p of points) {
+      const d = Math.sqrt(Math.pow(p.x - x, 2) + Math.pow(p.y - y, 2));
+      if(d <= radius) { dupName = p.name; break; }
+    }
+
+    const warnBox = document.getElementById('dup_warning');
+    if(dupName) {
+      warnBox.innerText = `⚠️ 重複注意: [${dupName}] から ${radius}m 以内です。`;
+      warnBox.style.display = 'block';
+    } else {
+      warnBox.style.display = 'none';
+    }
+  }
+
+  function addPoint() {
+    const name = document.getElementById('pt_name').value.trim() || `P-${pointCounter}`;
+    const x = parseFloat(document.getElementById('pt_x').value) || 0;
+    const y = parseFloat(document.getElementById('pt_y').value) || 0;
+    
+    // XY to LatLon
+    const lonlat = proj4(getProjDef(), 'EPSG:4326', [y, x]);
+    
+    const newPt = { id: Date.now().toString(), name: name, x: x, y: y, lat: lonlat[1], lon: lonlat[0] };
+    points.push(newPt);
+    savePoints();
+    
+    // Next Name
+    const match = name.match(/^P-(\d+)$/);
+    if(match) {
+      pointCounter = parseInt(match[1]) + 1;
+      document.getElementById('pt_name').value = `P-${pointCounter}`;
+    } else {
+      document.getElementById('pt_name').value = ""; // Clear if custom
+    }
+    
+    document.getElementById('dup_warning').style.display = 'none';
+    renderList();
+    renderMap();
+  }
+
+  function savePoints() {
+    localStorage.setItem('surveyPoints', JSON.stringify(points));
+  }
+
+  function deletePoint(id) {
+    points = points.filter(p => p.id !== id);
+    selectedForDist = selectedForDist.filter(pid => pid !== id);
+    selectedForArea = selectedForArea.filter(pid => pid !== id);
+    savePoints();
+    renderList();
+    renderMap();
+    if(currentMode === 'dist') calcDistance();
+    if(currentMode === 'area') calcArea();
+  }
+
+  function clearAllPoints() {
+    if(confirm("すべてのストックを削除しますか？")) {
+      points = [];
+      selectedForDist = [];
+      selectedForArea = [];
+      pointCounter = 1;
+      document.getElementById('pt_name').value = "P-1";
+      savePoints();
+      renderList();
+      renderMap();
+      calcDistance();
+      calcArea();
+    }
+  }
+
+  function handleListClick(id) {
+    if(currentMode === 'dist') {
+      if(selectedForDist.includes(id)) {
+        selectedForDist = selectedForDist.filter(x => x !== id);
+      } else {
+        selectedForDist.push(id);
+        if(selectedForDist.length > 2) selectedForDist.shift(); // Keep max 2
+      }
+      renderList();
+      calcDistance();
+    } else {
+      if(selectedForArea.includes(id)) {
+        selectedForArea = selectedForArea.filter(x => x !== id);
+      } else {
+        selectedForArea.push(id);
+      }
+      renderList();
+      calcArea();
+    }
+  }
+
+  function renderList() {
+    const listEl = document.getElementById('stock_list');
+    listEl.innerHTML = '';
+    
+    // Render in reverse so newest is on top
+    for(let i = points.length - 1; i >= 0; i--) {
+      const p = points[i];
+      const div = document.createElement('div');
+      
+      let isSelected = false;
+      if(currentMode === 'dist' && selectedForDist.includes(p.id)) isSelected = true;
+      if(currentMode === 'area' && selectedForArea.includes(p.id)) isSelected = true;
+      
+      div.className = `list-item ${isSelected ? 'selected' : ''}`;
+      div.onclick = () => handleListClick(p.id);
+      
+      div.innerHTML = `
+        <span class="list-item-name">${p.name}</span>
+        <span class="list-item-coords">X:${p.x.toFixed(2)}, Y:${p.y.toFixed(2)}</span>
+        <span class="list-item-del" onclick="event.stopPropagation(); deletePoint('${p.id}')">×</span>
+      `;
+      listEl.appendChild(div);
+    }
+  }
+
+  function switchTab(mode) {
+    currentMode = mode;
+    document.getElementById('tab_dist').className = `tab ${mode === 'dist' ? 'active' : ''}`;
+    document.getElementById('tab_area').className = `tab ${mode === 'area' ? 'active' : ''}`;
+    
+    if(mode === 'dist') {
+      document.getElementById('view_dist').className = '';
+      document.getElementById('view_area').className = 'hidden';
+      calcDistance();
+    } else {
+      document.getElementById('view_dist').className = 'hidden';
+      document.getElementById('view_area').className = '';
+      calcArea();
+    }
+    renderList();
+    renderMap();
+  }
+
+  // --- Calculations ---
+  function calcDistance() {
+    const n1 = document.getElementById('sel1_name');
+    const n2 = document.getElementById('sel2_name');
+    const res = document.getElementById('dist_result');
+    const det = document.getElementById('dist_details');
+    
+    const p1 = points.find(p => p.id === selectedForDist[0]);
+    const p2 = points.find(p => p.id === selectedForDist[1]);
+    
+    n1.innerText = p1 ? p1.name : '未選択';
+    n2.innerText = p2 ? p2.name : '未選択';
+    
+    if(currentLine) map.removeLayer(currentLine);
+
+    if(!p1 || !p2) {
+      res.className = "result-box info";
+      res.innerText = "2点を選択してください";
+      det.innerHTML = "ΔX: --- | ΔY: ---<br>方位角: ---";
+      return;
+    }
+
+    const dx = p2.x - p1.x;
+    const dy = p2.y - p1.y;
+    const dist = Math.sqrt(dx*dx + dy*dy);
+    
+    let deg = Math.atan2(dy, dx) * (180 / Math.PI);
+    if (deg < 0) deg += 360;
+    let ts = Math.round(deg * 3600);
+    let d = Math.floor(ts / 3600);
+    let m = Math.floor((ts % 3600) / 60);
+    let s = ts % 60;
+    if (d >= 360) d -= 360;
+
+    det.innerHTML = `ΔX: ${dx.toFixed(3)} m | ΔY: ${dy.toFixed(3)} m<br>方位角: ${d}° ${m}' ${s}"`;
+
+    const tol = parseFloat(document.getElementById('tolerance').value);
+    if (tol > 100) {
+      res.className = "result-box pass";
+      res.innerText = `距離: ${dist.toFixed(3)} m`;
+    } else if (dist <= tol) {
+      res.className = "result-box pass";
+      res.innerText = `較差: ${(dist * 1000).toFixed(1)} mm (OK)`;
+    } else {
+      res.className = "result-box fail";
+      res.innerText = `較差: ${(dist * 1000).toFixed(1)} mm (NG)`;
+    }
+
+    // Draw Line on map
+    currentLine = L.polyline([[p1.lat, p1.lon], [p2.lat, p2.lon]], {color: dist<=tol||tol>100 ? 'blue':'red', weight: 4}).addTo(map);
+    map.fitBounds(currentLine.getBounds(), {padding:[50,50], maxZoom: 18});
+  }
+
+  function calcArea() {
+    const selDiv = document.getElementById('area_selection');
+    const res = document.getElementById('area_result');
+    
+    if(currentPolygon) map.removeLayer(currentPolygon);
+
+    if(selectedForArea.length === 0) {
+      selDiv.innerText = "未選択";
+      res.innerText = "面積: --- ㎡";
+      return;
+    }
+
+    const pts = selectedForArea.map(id => points.find(p => p.id === id)).filter(p=>p);
+    selDiv.innerText = pts.map(p => p.name).join(" → ") + (pts.length>2 ? " (閉合)" : "");
+
+    if(pts.length < 3) {
+      res.className = "result-box info";
+      res.innerText = "3点以上を選択してください";
+      // Draw line if 2 points
+      if(pts.length === 2) {
+        currentPolygon = L.polyline([[pts[0].lat, pts[0].lon], [pts[1].lat, pts[1].lon]], {color:'green', dashArray:'5,5'}).addTo(map);
+      }
+      return;
+    }
+
+    // 座標法による面積計算
+    let area = 0;
+    for (let i = 0; i < pts.length; i++) {
+        let j = (i + 1) % pts.length;
+        area += pts[i].x * pts[j].y - pts[j].x * pts[i].y;
+    }
+    area = Math.abs(area) / 2.0;
+
+    res.className = "result-box pass";
+    res.innerText = `面積: ${area.toFixed(3)} ㎡ (${(area * 0.3025).toFixed(2)} 坪)`;
+
+    // Draw Polygon
+    const latlngs = pts.map(p => [p.lat, p.lon]);
+    currentPolygon = L.polygon(latlngs, {color: 'green', weight: 3, fillColor: '#86efac', fillOpacity: 0.5}).addTo(map);
+    map.fitBounds(currentPolygon.getBounds(), {padding:[50,50], maxZoom: 18});
+  }
+
+  function clearAreaSelection() {
+    selectedForArea = [];
+    renderList();
+    calcArea();
+  }
+
+  function renderMap() {
+    // Clear old markers
+    for(let id in mapMarkers) map.removeLayer(mapMarkers[id]);
+    mapMarkers = {};
+
+    let bounds = [];
+    points.forEach(p => {
+      let isSel = (currentMode === 'dist' && selectedForDist.includes(p.id)) || 
+                  (currentMode === 'area' && selectedForArea.includes(p.id));
+      
+      const m = L.circleMarker([p.lat, p.lon], {
+        radius: isSel ? 8 : 5,
+        fillColor: isSel ? '#ea580c' : '#1e3a8a',
+        color: '#fff',
+        weight: 2,
+        fillOpacity: 1
+      }).bindTooltip(p.name, {permanent: isSel, direction: 'right'}).addTo(map);
+      
+      mapMarkers[p.id] = m;
+      bounds.push([p.lat, p.lon]);
+    });
+
+    if(bounds.length > 0 && selectedForDist.length === 0 && selectedForArea.length === 0) {
+      map.fitBounds(bounds, {padding:[50,50], maxZoom:18});
+    }
+  }
+
+  // --- CSV Export ---
+  function exportCSV() {
+    if(points.length === 0) { alert("出力するデータがありません。"); return; }
+    
+    let csvContent = "data:text/csv;charset=utf-8,﻿"; // BOM for Excel
+    csvContent += "測点名,X(北),Y(東),緯度,経度
+";
+    
+    points.forEach(p => {
+      csvContent += `${p.name},${p.x.toFixed(3)},${p.y.toFixed(3)},${p.lat.toFixed(6)},${p.lon.toFixed(6)}
+`;
+    });
+
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement("a");
+    link.setAttribute("href", encodedUri);
+    const dateStr = new Date().toISOString().slice(0,10).replace(/-/g,"");
+    link.setAttribute("download", `測量観測データ_${dateStr}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  }
+
+  // Initial render
+  renderList();
+  renderMap();
+</script>
+</body>
+</html>
