@@ -1,4 +1,4 @@
-const CACHE_NAME = 'survey-app-v1.1'; // ←ここを v1.1 に変更
+const CACHE_NAME = 'survey-app-v1.2'; // ←ここを v1.2 に変更
 const ASSETS_TO_CACHE = [
   './index.html',
   './manifest.json',
@@ -16,7 +16,7 @@ self.addEventListener('install', (event) => {
       return cache.addAll(ASSETS_TO_CACHE);
     })
   );
-  self.skipWaiting(); // 新しいバージョンを即座にアクティブにする
+  self.skipWaiting();
 });
 
 self.addEventListener('activate', (event) => {
@@ -25,7 +25,7 @@ self.addEventListener('activate', (event) => {
       return Promise.all(
         cacheNames.map((cache) => {
           if (cache !== CACHE_NAME) {
-            return caches.delete(cache); // 古いキャッシュ（動かないファイル）を削除
+            return caches.delete(cache);
           }
         })
       );
