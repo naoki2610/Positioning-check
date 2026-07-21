@@ -19,19 +19,20 @@
     @media (min-width: 768px) { .main-content { flex-direction: row; } }
 
     .panel { padding: 12px; overflow-y: auto; background: white; box-shadow: 2px 0 5px rgba(0,0,0,0.1); z-index: 10; display: flex; flex-direction: column; gap: 12px; }
-    @media (min-width: 768px) { .panel { width: 450px; flex-shrink: 0; height: 100%; } }
+    @media (min-width: 768px) { .panel { width: 480px; flex-shrink: 0; height: 100%; } }
     @media (max-width: 767px) { .panel { flex: 1 1 50%; min-height: 50%; } }
 
     #map-container { position: relative; flex-grow: 1; }
     #map { width: 100%; height: 100%; z-index: 1; }
-    @media (max-width: 767px) { #map-container { flex: 1 1 50%; min-height: 300px; } }
 
     .card { background: #f1f5f9; padding: 10px; border-radius: 6px; border: 1px solid #e2e8f0; }
     .card-title { font-weight: bold; font-size: 0.9rem; margin-bottom: 8px; color: #334155; display: flex; justify-content: space-between; align-items: center; }
     label { font-size: 0.8rem; font-weight: bold; color: #475569; display: block; margin-bottom: 2px; }
     input, select, button { width: 100%; padding: 8px; border: 1px solid #cbd5e1; border-radius: 4px; font-size: 0.95rem; }
+    input[type=number] { text-align: right; }
     
     .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    .grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 4px; }
     
     .btn { background: var(--secondary); color: white; border: none; font-weight: bold; cursor: pointer; transition: background 0.2s; padding: 10px; }
     .btn-green { background: var(--pass); }
@@ -46,7 +47,8 @@
     .pass { background: #dcfce7; color: var(--pass); border: 1px solid #86efac; }
     .fail { background: #fee2e2; color: var(--fail); border: 1px solid #fca5a5; }
     .info { background: #e0f2fe; color: #0369a1; border: 1px solid #bae6fd; }
-    .warn-box { background: #fef08a; color: var(--warn); padding: 8px; border-radius: 4px; font-size: 0.85rem; font-weight: bold; display: none; margin-bottom: 8px; border: 1px solid #fde047; }
+    .warn-box { background: #fef08a; color: var(--warn); padding: 8px; border-radius: 4px; font-size: 0.85rem; font-weight: bold; display: none; margin-top: 4px; border: 1px solid #fde047; }
+    .preview-box { background: #e2e8f0; font-family: monospace; font-size: 0.85rem; padding: 6px; border-radius: 4px; color: #334155; margin-top: 8px; display: none; }
 
     .list-container { max-height: 150px; overflow-y: auto; background: white; border: 1px solid #cbd5e1; border-radius: 4px; }
     .list-item { display: flex; justify-content: space-between; align-items: center; padding: 6px 10px; border-bottom: 1px solid #f1f5f9; cursor: pointer; }
@@ -67,7 +69,7 @@
       @page { size: A4 portrait; margin: 10mm; }
       body { background: white; height: auto; overflow: visible; display: block; }
       header { background: white !important; color: black !important; border-bottom: 2px solid #000; padding: 0 0 10px 0; margin-bottom: 15px; }
-      .btn, .tabs, .list-container, #pt_name, #pt_x, #pt_y, select, label { display: none !important; }
+      .btn, .tabs, .list-container, select, label, .card input { display: none !important; }
       .card { border: 1px solid #000; background: transparent; box-shadow: none; break-inside: avoid; }
       .result-box { border: 2px solid #000; background: transparent !important; color: #000 !important; }
       #map-container { height: 130mm !important; width: 100%; border: 2px solid #000; margin-top: 15px; page-break-inside: avoid; }
@@ -82,7 +84,7 @@
 <header>
   <div>📍 現場測量アシスト</div>
   <div style="display: flex; gap: 5px;">
-    <button class="btn btn-outline" style="width: auto; padding: 4px 8px; font-size: 0.8rem;" onclick="window.print()">🖨️ レポート保存</button>
+    <button class="btn btn-outline" style="width: auto; padding: 4px 8px; font-size: 0.8rem;" onclick="window.print()">🖨️ レポート</button>
     <button class="btn btn-outline" style="width: auto; padding: 4px 8px; font-size: 0.8rem;" onclick="exportCSV()">CSV</button>
   </div>
 </header>
@@ -93,42 +95,98 @@
     <div class="card" id="input_card">
       <div class="card-title">
         ① 座標の取得と保存
-        <button id="btn_gps" class="btn btn-gps" style="width: auto; padding: 4px 8px; font-size: 0.8rem;" onclick="getCurrentGNSS()">🛰️ 現在地を取得</button>
+        <button id="btn_gps" class="btn btn-gps" style="width: auto; padding: 4px 8px; font-size: 0.8rem;" onclick="getCurrentGNSS()">🛰️ 現在地取得</button>
       </div>
       
       <div class="grid-2" style="margin-bottom: 8px;">
         <div>
-          <label>座標系</label>
-          <select id="zone_select">
+          <label>座標系 (全国対応)</label>
+          <select id="zone_select" onchange="previewCoordinate()">
             <option value="1">第1系 (長崎・鹿児島離島)</option>
-            <option value="2" selected>第2系 (福岡・佐賀・熊本・大分・宮崎・鹿児島)</option>
-            <option value="9">第9系 (関東等)</option>
+            <option value="2" selected>第2系 (福岡・佐賀・熊本等)</option>
+            <option value="3">第3系 (山口・島根・広島)</option>
+            <option value="4">第4系 (香川・愛媛・徳島・高知)</option>
+            <option value="5">第5系 (兵庫・鳥取・岡山)</option>
+            <option value="6">第6系 (京都・大阪・和歌山等)</option>
+            <option value="7">第7系 (石川・富山・岐阜・愛知)</option>
+            <option value="8">第8系 (新潟・長野・山梨・静岡)</option>
+            <option value="9">第9系 (東京・神奈川・千葉・埼玉等)</option>
+            <option value="10">第10系 (青森・秋田・岩手・宮城等)</option>
+            <option value="11">第11系 (北海道 西部)</option>
+            <option value="12">第12系 (北海道 中央部)</option>
+            <option value="13">第13系 (北海道 東部)</option>
+            <option value="14">第14系 (小笠原諸島)</option>
+            <option value="15">第15系 (沖縄本島)</option>
+            <option value="16">第16系 (先島諸島)</option>
+            <option value="17">第17系 (大東諸島)</option>
+            <option value="18">第18系 (沖ノ鳥島)</option>
+            <option value="19">第19系 (南鳥島)</option>
           </select>
         </div>
         <div>
-          <label>重複チェック(半径)</label>
-          <select id="dup_radius">
-            <option value="0">チェックしない</option>
-            <option value="1.0" selected>1.0 m 以内</option>
+          <label>入力モード</label>
+          <select id="input_mode" onchange="switchInputMode()">
+            <option value="xy" selected>平面直角 (X, Y)</option>
+            <option value="dd">緯度経度 (十進法)</option>
+            <option value="dms">緯度経度 (度分秒)</option>
           </select>
         </div>
       </div>
-      <div id="dup_warning" class="warn-box">⚠️ 重複の可能性: 既存の点と近接しています。</div>
-      <div class="flex-row">
+
+      <div class="flex-row" style="margin-bottom: 8px;">
         <div style="width: 80px;">
           <label>点名</label>
           <input type="text" id="pt_name" value="P-1">
         </div>
-        <div style="flex:1;">
-          <label>X (m) [北]</label>
-          <input type="number" id="pt_x" placeholder="例: -80000.123" step="0.001" oninput="checkDuplicate()">
+        
+        <!-- モード1: 平面直角 (XY) -->
+        <div id="mode_xy" class="flex-row" style="flex:1;">
+          <div style="flex:1;"><label>X(北) [m]</label><input type="number" id="in_x" step="0.001" oninput="previewCoordinate()"></div>
+          <div style="flex:1;"><label>Y(東) [m]</label><input type="number" id="in_y" step="0.001" oninput="previewCoordinate()"></div>
         </div>
-        <div style="flex:1;">
-          <label>Y (m) [東]</label>
-          <input type="number" id="pt_y" placeholder="例: -30000.456" step="0.001" oninput="checkDuplicate()">
+
+        <!-- モード2: 十進法 (DD) -->
+        <div id="mode_dd" class="flex-row hidden" style="flex:1;">
+          <div style="flex:1;"><label>緯度 (Lat) [度]</label><input type="number" id="in_lat_dd" step="0.000001" placeholder="35.12345" oninput="previewCoordinate()"></div>
+          <div style="flex:1;"><label>経度 (Lon) [度]</label><input type="number" id="in_lon_dd" step="0.000001" placeholder="139.12345" oninput="previewCoordinate()"></div>
         </div>
       </div>
-      <button class="btn btn-green" style="margin-top: 10px;" onclick="addPoint()">＋ この座標をストックに追加</button>
+
+      <!-- モード3: 度分秒 (DMS) -->
+      <div id="mode_dms" class="hidden" style="margin-bottom: 8px;">
+        <div class="grid-2">
+          <div>
+            <label>緯度 (Lat)</label>
+            <div class="grid-3">
+              <div><input type="number" id="lat_d" placeholder="度" oninput="previewCoordinate()"></div>
+              <div><input type="number" id="lat_m" placeholder="分" oninput="previewCoordinate()"></div>
+              <div><input type="number" id="lat_s" step="0.01" placeholder="秒" oninput="previewCoordinate()"></div>
+            </div>
+          </div>
+          <div>
+            <label>経度 (Lon)</label>
+            <div class="grid-3">
+              <div><input type="number" id="lon_d" placeholder="度" oninput="previewCoordinate()"></div>
+              <div><input type="number" id="lon_m" placeholder="分" oninput="previewCoordinate()"></div>
+              <div><input type="number" id="lon_s" step="0.01" placeholder="秒" oninput="previewCoordinate()"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- リアルタイムプレビュー & 重複警告 -->
+      <div id="convert_preview" class="preview-box">変換後: X=---, Y=---</div>
+      <div id="dup_warning" class="warn-box">⚠️ 重複注意: 既存の点と近接しています。</div>
+
+      <div class="grid-2" style="margin-top: 10px;">
+        <div>
+          <select id="dup_radius" style="font-size: 0.85rem; padding: 10px;" onchange="previewCoordinate()">
+            <option value="0">重複チェックなし</option>
+            <option value="1.0" selected>1.0m以内で警告</option>
+          </select>
+        </div>
+        <button class="btn btn-green" onclick="addPoint()">＋ ストックに追加</button>
+      </div>
     </div>
 
     <!-- 2. ストック一覧エリア -->
@@ -146,7 +204,6 @@
       <div class="tab" id="tab_area" onclick="switchTab('area')">面積計算</div>
     </div>
 
-    <!-- 距離計算 -->
     <div id="view_dist">
       <div class="grid-2">
         <div class="card" style="padding: 6px;">点1: <strong id="sel1_name">未選択</strong></div>
@@ -165,7 +222,6 @@
       <div style="font-size: 0.85rem; color: #475569; margin-top: 4px;" id="dist_details">ΔX: --- | ΔY: ---<br>方位角: ---</div>
     </div>
 
-    <!-- 面積計算 -->
     <div id="view_area" class="hidden">
       <div class="card" style="padding: 6px; min-height: 40px; font-size: 0.9rem;" id="area_selection">未選択</div>
       <div style="text-align: right; margin-top: 4px;">
@@ -173,7 +229,6 @@
       </div>
       <div id="area_result" class="result-box info">3点以上を選択してください</div>
     </div>
-
   </div>
   <div id="map-container"><div id="map"></div></div>
 </div>
@@ -182,9 +237,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/proj4js/2.9.0/proj4.js"></script>
 <script>
   if ('serviceWorker' in navigator) {
-    window.addEventListener('load', () => {
-      navigator.serviceWorker.register('./sw.js').catch(err => console.error('SW登録失敗:', err));
-    });
+    window.addEventListener('load', () => navigator.serviceWorker.register('./sw.js').catch(e => console.error(e)));
   }
 
   const ZONE_ORIGINS = {
@@ -198,128 +251,138 @@
   let selectedForDist = [];
   let selectedForArea = [];
   let currentMode = 'dist';
+  let tempX = null, tempY = null; // プレビュー用の内部保持座標
 
-  // 初期読み込み時のスマート連番復元
   if(localStorage.getItem('surveyPoints')) {
     points = JSON.parse(localStorage.getItem('surveyPoints'));
     if(points.length > 0) {
       const lastPt = points[points.length - 1];
-      // 任意の文字(接頭辞)と数字の組み合わせを解析する正規表現
       const match = lastPt.name.match(/^(.*?)(\d+)$/);
-      if(match) {
-        const prefix = match[1];
-        const num = parseInt(match[2]) + 1;
-        document.getElementById('pt_name').value = `${prefix}${num}`;
-      }
-      document.getElementById('pt_x').value = lastPt.x;
-      document.getElementById('pt_y').value = lastPt.y;
+      if(match) { document.getElementById('pt_name').value = `${match[1]}${parseInt(match[2]) + 1}`; }
+      document.getElementById('in_x').value = lastPt.x;
+      document.getElementById('in_y').value = lastPt.y;
     }
   }
 
   const map = L.map('map').setView([31.62, 130.35], 12);
   L.tileLayer('https://cyberjapandata.gsi.go.jp/xyz/std/{z}/{x}/{y}.png', { maxZoom: 18 }).addTo(map);
   
-  let mapMarkers = {};
-  let currentLine = null;
-  let currentPolygon = null;
-  let currentDistLabel = null; 
+  let mapMarkers = {}, currentLine = null, currentPolygon = null, currentDistLabel = null; 
 
   function getProjDef() {
-    const zone = document.getElementById('zone_select').value;
-    const origin = ZONE_ORIGINS[zone] || ZONE_ORIGINS[2];
+    const origin = ZONE_ORIGINS[document.getElementById('zone_select').value] || ZONE_ORIGINS[2];
     return `+proj=tmerc +lat_0=${origin[0]} +lon_0=${origin[1]} +k=0.9999 +x_0=0 +y_0=0 +ellps=GRS80 +units=m +no_defs`;
   }
 
-  function getCurrentGNSS() {
-    const btn = document.getElementById('btn_gps');
-    if (!navigator.geolocation) { alert("お使いのブラウザは位置情報に対応していません。"); return; }
-    
-    btn.innerText = "⏳ 測位中...";
-    btn.style.backgroundColor = "#fff7ed";
-
-    navigator.geolocation.getCurrentPosition(
-      (position) => {
-        const lat = position.coords.latitude;
-        const lon = position.coords.longitude;
-        const accuracy = position.coords.accuracy;
-
-        try {
-          const xy = proj4('EPSG:4326', getProjDef(), [lon, lat]);
-          const y = xy[0]; 
-          const x = xy[1]; 
-
-          document.getElementById('pt_x').value = x.toFixed(3);
-          document.getElementById('pt_y').value = y.toFixed(3);
-          
-          btn.innerText = "🛰️ 現在地を取得";
-          btn.style.backgroundColor = "white";
-
-          alert(`現在地を測位しました。\n・推定誤差(精度): 約 ${accuracy.toFixed(2)} m\n※値を確認して「＋ ストックに追加」を押してください。`);
-          checkDuplicate();
-          map.setView([lat, lon], 17);
-
-        } catch (e) {
-          alert("座標系の変換に失敗しました。");
-          btn.innerText = "🛰️ 現在地を取得";
-          btn.style.backgroundColor = "white";
-        }
-      },
-      (error) => {
-        let msg = "位置情報の取得に失敗しました。";
-        if (error.code === 1) msg = "位置情報の利用が許可されていません。スマホの設定でブラウザの「位置情報」をオンにしてください。";
-        if (error.code === 2) msg = "電波状況が悪く、位置が特定できません。空の開けた場所で再試行してください。";
-        if (error.code === 3) msg = "測位がタイムアウトしました。";
-        alert(msg);
-        btn.innerText = "🛰️ 現在地を取得";
-        btn.style.backgroundColor = "white";
-      },
-      { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
-    );
+  function switchInputMode() {
+    const mode = document.getElementById('input_mode').value;
+    document.getElementById('mode_xy').className = mode === 'xy' ? 'flex-row' : 'hidden';
+    document.getElementById('mode_dd').className = mode === 'dd' ? 'flex-row' : 'hidden';
+    document.getElementById('mode_dms').className = mode === 'dms' ? '' : 'hidden';
+    document.getElementById('convert_preview').style.display = mode === 'xy' ? 'none' : 'block';
+    previewCoordinate();
   }
 
-  function checkDuplicate() {
-    const rStr = document.getElementById('dup_radius').value;
-    if(rStr == "0") { document.getElementById('dup_warning').style.display = 'none'; return; }
-    const xStr = document.getElementById('pt_x').value;
-    const yStr = document.getElementById('pt_y').value;
-    if(!xStr || !yStr) return;
-    const x = parseFloat(xStr); const y = parseFloat(yStr); const radius = parseFloat(rStr);
-    let dupName = null;
-    for(let p of points) {
-      const d = Math.sqrt(Math.pow(p.x - x, 2) + Math.pow(p.y - y, 2));
-      if(d <= radius) { dupName = p.name; break; }
-    }
+  // 入力値からX, Yを計算してプレビュー＆重複チェック
+  function previewCoordinate() {
+    const mode = document.getElementById('input_mode').value;
+    tempX = null; tempY = null;
+    let previewBox = document.getElementById('convert_preview');
+    
+    try {
+      if (mode === 'xy') {
+        const x = parseFloat(document.getElementById('in_x').value);
+        const y = parseFloat(document.getElementById('in_y').value);
+        if(!isNaN(x) && !isNaN(y)) { tempX = x; tempY = y; }
+      } 
+      else if (mode === 'dd') {
+        const lat = parseFloat(document.getElementById('in_lat_dd').value);
+        const lon = parseFloat(document.getElementById('in_lon_dd').value);
+        if(!isNaN(lat) && !isNaN(lon)) {
+          const xy = proj4('EPSG:4326', getProjDef(), [lon, lat]);
+          tempX = xy[1]; tempY = xy[0];
+          previewBox.innerText = `変換後: X = ${tempX.toFixed(3)} , Y = ${tempY.toFixed(3)}`;
+        } else { previewBox.innerText = `変換後: X = --- , Y = ---`; }
+      } 
+      else if (mode === 'dms') {
+        const latD = parseFloat(document.getElementById('lat_d').value||0);
+        const latM = parseFloat(document.getElementById('lat_m').value||0);
+        const latS = parseFloat(document.getElementById('lat_s').value||0);
+        const lonD = parseFloat(document.getElementById('lon_d').value||0);
+        const lonM = parseFloat(document.getElementById('lon_m').value||0);
+        const lonS = parseFloat(document.getElementById('lon_s').value||0);
+        
+        if(latD>0 && lonD>0) {
+          const lat = latD + (latM/60) + (latS/3600);
+          const lon = lonD + (lonM/60) + (lonS/3600);
+          const xy = proj4('EPSG:4326', getProjDef(), [lon, lat]);
+          tempX = xy[1]; tempY = xy[0];
+          previewBox.innerText = `変換後: X = ${tempX.toFixed(3)} , Y = ${tempY.toFixed(3)}`;
+        } else { previewBox.innerText = `変換後: X = --- , Y = ---`; }
+      }
+    } catch(e) { previewBox.innerText = `変換エラー: 入力値を確認してください`; }
+
+    // 重複チェック
     const warnBox = document.getElementById('dup_warning');
+    const radius = parseFloat(document.getElementById('dup_radius').value);
+    if(radius === 0 || tempX === null) { warnBox.style.display = 'none'; return; }
+    
+    let dupName = points.find(p => Math.sqrt(Math.pow(p.x - tempX, 2) + Math.pow(p.y - tempY, 2)) <= radius)?.name;
     if(dupName) { warnBox.innerText = `⚠️ 重複注意: [${dupName}] から ${radius}m 以内です。`; warnBox.style.display = 'block'; } 
     else { warnBox.style.display = 'none'; }
   }
 
-  function addPoint() {
-    const name = document.getElementById('pt_name').value.trim() || `P-${Date.now().toString().slice(-4)}`;
-    const xStr = document.getElementById('pt_x').value;
-    const yStr = document.getElementById('pt_y').value;
-    if(xStr === "" || yStr === "") { alert("X座標とY座標を入力してください。"); return; }
-    const x = parseFloat(xStr); const y = parseFloat(yStr);
-    try {
-      const lonlat = proj4(getProjDef(), 'EPSG:4326', [y, x]);
-      points.push({ id: Date.now().toString(), name: name, x: x, y: y, lat: lonlat[1], lon: lonlat[0] });
-      savePoints();
-      
-      // 追加時のスマート連番機能（任意のプレフィックスに対応）
-      const match = name.match(/^(.*?)(\d+)$/);
-      if(match) {
-        const prefix = match[1];
-        const num = parseInt(match[2]) + 1;
-        document.getElementById('pt_name').value = `${prefix}${num}`;
-      } else {
-        document.getElementById('pt_name').value = "";
-      }
-      
-      document.getElementById('dup_warning').style.display = 'none';
-      renderList(); renderMap();
-    } catch (e) { alert("座標系の変換でエラーが発生しました。"); }
+  function getCurrentGNSS() {
+    const btn = document.getElementById('btn_gps');
+    if (!navigator.geolocation) return alert("ブラウザが位置情報に未対応です。");
+    
+    btn.innerText = "⏳ 測位中..."; btn.style.backgroundColor = "#fff7ed";
+
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        const lat = pos.coords.latitude; const lon = pos.coords.longitude;
+        // 測位したら強制的に十進法モードに切り替えて値をセット
+        document.getElementById('input_mode').value = 'dd';
+        switchInputMode();
+        document.getElementById('in_lat_dd').value = lat.toFixed(6);
+        document.getElementById('in_lon_dd').value = lon.toFixed(6);
+        previewCoordinate();
+        
+        btn.innerText = "🛰️ 現在地取得"; btn.style.backgroundColor = "white";
+        alert(`測位完了（誤差: 約 ${pos.coords.accuracy.toFixed(2)} m）\n「＋ 追加」を押してください。`);
+        map.setView([lat, lon], 17);
+      },
+      (err) => { alert("位置情報の取得に失敗しました。"); btn.innerText = "🛰️ 現在地取得"; btn.style.backgroundColor = "white"; },
+      { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
+    );
   }
 
+  function addPoint() {
+    previewCoordinate(); // 最新の状態に更新
+    if(tempX === null || tempY === null) return alert("座標を正しく入力してください。");
+    
+    const name = document.getElementById('pt_name').value.trim() || `P-${Date.now().toString().slice(-4)}`;
+    try {
+      const lonlat = proj4(getProjDef(), 'EPSG:4326', [tempY, tempX]);
+      points.push({ id: Date.now().toString(), name: name, x: tempX, y: tempY, lat: lonlat[1], lon: lonlat[0] });
+      savePoints();
+      
+      const match = name.match(/^(.*?)(\d+)$/);
+      if(match) document.getElementById('pt_name').value = `${match[1]}${parseInt(match[2]) + 1}`;
+      
+      // 入力欄をクリア（直前モードに応じる）
+      const mode = document.getElementById('input_mode').value;
+      if(mode==='xy'){ document.getElementById('in_x').value=''; document.getElementById('in_y').value=''; }
+      else if(mode==='dd'){ document.getElementById('in_lat_dd').value=''; document.getElementById('in_lon_dd').value=''; }
+      else { document.querySelectorAll('#mode_dms input').forEach(inpt => inpt.value=''); }
+      
+      document.getElementById('dup_warning').style.display = 'none';
+      if(mode !== 'xy') document.getElementById('convert_preview').innerText = `変換後: X = --- , Y = ---`;
+      renderList(); renderMap();
+    } catch (e) { alert("変換でエラーが発生しました。"); }
+  }
+
+  // --- 以下は前バージョンと同様の計算・描画ロジック ---
   function savePoints() { localStorage.setItem('surveyPoints', JSON.stringify(points)); }
 
   function deletePoint(id) {
@@ -327,32 +390,31 @@
     selectedForDist = selectedForDist.filter(pid => pid !== id);
     selectedForArea = selectedForArea.filter(pid => pid !== id);
     savePoints(); renderList(); renderMap();
-    if(currentMode === 'dist') calcDistance(); if(currentMode === 'area') calcArea();
+    if(currentMode === 'dist') calcDistance(); else calcArea();
   }
 
   function clearAllPoints() {
-    if(confirm("すべてのストックを削除しますか？")) {
+    if(confirm("すべて削除しますか？")) {
       points = []; selectedForDist = []; selectedForArea = [];
-      document.getElementById('pt_name').value = "P-1"; document.getElementById('pt_x').value = ""; document.getElementById('pt_y').value = "";
+      document.getElementById('pt_name').value = "P-1"; 
       savePoints(); renderList(); renderMap(); calcDistance(); calcArea();
     }
   }
 
   function handleListClick(id) {
     if(currentMode === 'dist') {
-      if(selectedForDist.includes(id)) { selectedForDist = selectedForDist.filter(x => x !== id); } 
+      if(selectedForDist.includes(id)) selectedForDist = selectedForDist.filter(x => x !== id);
       else { selectedForDist.push(id); if(selectedForDist.length > 2) selectedForDist.shift(); }
       renderList(); calcDistance();
     } else {
-      if(selectedForArea.includes(id)) { selectedForArea = selectedForArea.filter(x => x !== id); } 
-      else { selectedForArea.push(id); }
+      if(selectedForArea.includes(id)) selectedForArea = selectedForArea.filter(x => x !== id);
+      else selectedForArea.push(id);
       renderList(); calcArea();
     }
   }
 
   function renderList() {
-    const listEl = document.getElementById('stock_list');
-    listEl.innerHTML = '';
+    const listEl = document.getElementById('stock_list'); listEl.innerHTML = '';
     for(let i = points.length - 1; i >= 0; i--) {
       const p = points[i]; const div = document.createElement('div');
       let isSel = (currentMode === 'dist' && selectedForDist.includes(p.id)) || (currentMode === 'area' && selectedForArea.includes(p.id));
@@ -374,76 +436,48 @@
   }
 
   function calcDistance() {
-    const p1 = points.find(p => p.id === selectedForDist[0]);
-    const p2 = points.find(p => p.id === selectedForDist[1]);
+    const p1 = points.find(p => p.id === selectedForDist[0]), p2 = points.find(p => p.id === selectedForDist[1]);
     document.getElementById('sel1_name').innerText = p1 ? p1.name : '未選択';
     document.getElementById('sel2_name').innerText = p2 ? p2.name : '未選択';
-    
-    if(currentLine) map.removeLayer(currentLine);
-    if(currentDistLabel) { map.removeLayer(currentDistLabel); currentDistLabel = null; }
+    if(currentLine) map.removeLayer(currentLine); if(currentDistLabel) { map.removeLayer(currentDistLabel); currentDistLabel = null; }
 
     if(!p1 || !p2) {
-      document.getElementById('dist_result').className = "result-box info";
-      document.getElementById('dist_result').innerText = "2点を選択してください";
-      document.getElementById('dist_details').innerHTML = "ΔX: --- | ΔY: ---<br>方位角: ---";
-      renderMap(); 
-      return;
+      document.getElementById('dist_result').className = "result-box info"; document.getElementById('dist_result').innerText = "2点を選択してください";
+      document.getElementById('dist_details').innerHTML = "ΔX: --- | ΔY: ---<br>方位角: ---"; renderMap(); return;
     }
 
-    const dx = p2.x - p1.x; const dy = p2.y - p1.y;
-    const dist = Math.sqrt(dx*dx + dy*dy);
-    
-    let deg = Math.atan2(dy, dx) * (180 / Math.PI);
-    if (deg < 0) deg += 360;
-    let ts = Math.round(deg * 3600);
-    let d = Math.floor(ts / 3600); let m = Math.floor((ts % 3600) / 60); let s = ts % 60;
-    if (d >= 360) d -= 360;
-
+    const dx = p2.x - p1.x, dy = p2.y - p1.y, dist = Math.sqrt(dx*dx + dy*dy);
+    let deg = Math.atan2(dy, dx) * (180 / Math.PI); if (deg < 0) deg += 360;
+    let ts = Math.round(deg * 3600), d = Math.floor(ts / 3600), m = Math.floor((ts % 3600) / 60), s = ts % 60; if (d >= 360) d -= 360;
     document.getElementById('dist_details').innerHTML = `ΔX: ${dx.toFixed(3)} m | ΔY: ${dy.toFixed(3)} m<br>方位角: ${d}° ${m}' ${s}"`;
 
-    const tol = parseFloat(document.getElementById('tolerance').value);
-    const res = document.getElementById('dist_result');
+    const tol = parseFloat(document.getElementById('tolerance').value), res = document.getElementById('dist_result');
     if (tol > 100) { res.className = "result-box pass"; res.innerText = `距離: ${dist.toFixed(3)} m`; } 
     else if (dist <= tol) { res.className = "result-box pass"; res.innerText = `較差: ${(dist * 1000).toFixed(1)} mm (OK)`; } 
     else { res.className = "result-box fail"; res.innerText = `較差: ${(dist * 1000).toFixed(1)} mm (NG)`; }
 
     currentLine = L.polyline([[p1.lat, p1.lon], [p2.lat, p2.lon]], {color: dist<=tol||tol>100 ? 'blue':'red', weight: 4}).addTo(map);
-    const midLat = (p1.lat + p2.lat) / 2;
-    const midLon = (p1.lon + p2.lon) / 2;
-    currentDistLabel = L.marker([midLat, midLon], {
-      icon: L.divIcon({ className: 'dist-label-container', html: `<div class="dist-label-content">S = ${dist.toFixed(3)} m</div>`, iconSize: [null, null] })
-    }).addTo(map);
-
-    renderMap();
-    map.fitBounds(currentLine.getBounds(), {padding:[80,80], maxZoom: 18});
+    currentDistLabel = L.marker([(p1.lat+p2.lat)/2, (p1.lon+p2.lon)/2], { icon: L.divIcon({ className: 'dist-label-container', html: `<div class="dist-label-content">S = ${dist.toFixed(3)} m</div>`, iconSize: [null, null] }) }).addTo(map);
+    renderMap(); map.fitBounds(currentLine.getBounds(), {padding:[80,80], maxZoom: 18});
   }
 
   function calcArea() {
     const pts = selectedForArea.map(id => points.find(p => p.id === id)).filter(p=>p);
     document.getElementById('area_selection').innerText = pts.length === 0 ? "未選択" : pts.map(p => p.name).join(" → ") + (pts.length>2 ? " (閉合)" : "");
-    if(currentPolygon) map.removeLayer(currentPolygon);
-    if(currentDistLabel) { map.removeLayer(currentDistLabel); currentDistLabel = null; }
+    if(currentPolygon) map.removeLayer(currentPolygon); if(currentDistLabel) { map.removeLayer(currentDistLabel); currentDistLabel = null; }
 
     if(pts.length < 3) {
-      document.getElementById('area_result').className = "result-box info";
-      document.getElementById('area_result').innerText = "3点以上を選択してください";
+      document.getElementById('area_result').className = "result-box info"; document.getElementById('area_result').innerText = "3点以上を選択してください";
       if(pts.length === 2) currentPolygon = L.polyline([[pts[0].lat, pts[0].lon], [pts[1].lat, pts[1].lon]], {color:'green', dashArray:'5,5'}).addTo(map);
-      renderMap();
-      return;
+      renderMap(); return;
     }
 
     let area = 0;
-    for (let i = 0; i < pts.length; i++) {
-        let j = (i + 1) % pts.length;
-        area += pts[i].x * pts[j].y - pts[j].x * pts[i].y;
-    }
+    for (let i = 0; i < pts.length; i++) { let j = (i + 1) % pts.length; area += pts[i].x * pts[j].y - pts[j].x * pts[i].y; }
     area = Math.abs(area) / 2.0;
-
-    document.getElementById('area_result').className = "result-box pass";
-    document.getElementById('area_result').innerText = `面積: ${area.toFixed(3)} ㎡ (${(area * 0.3025).toFixed(2)} 坪)`;
+    document.getElementById('area_result').className = "result-box pass"; document.getElementById('area_result').innerText = `面積: ${area.toFixed(3)} ㎡ (${(area * 0.3025).toFixed(2)} 坪)`;
     currentPolygon = L.polygon(pts.map(p => [p.lat, p.lon]), {color: 'green', weight: 3, fillColor: '#86efac', fillOpacity: 0.5}).addTo(map);
-    renderMap();
-    map.fitBounds(currentPolygon.getBounds(), {padding:[80,80], maxZoom: 18});
+    renderMap(); map.fitBounds(currentPolygon.getBounds(), {padding:[80,80], maxZoom: 18});
   }
 
   function clearAreaSelection() { selectedForArea = []; renderList(); calcArea(); }
@@ -451,78 +485,42 @@
   function renderMap() {
     for(let id in mapMarkers) map.removeLayer(mapMarkers[id]);
     mapMarkers = {}; let bounds = [];
-
-    let p1_dist = null, p2_dist = null;
-    let dir1 = 'top', dir2 = 'bottom';
+    let p1_dist = null, p2_dist = null, dir1 = 'top', dir2 = 'bottom';
     if (currentMode === 'dist' && selectedForDist.length === 2) {
-      p1_dist = points.find(p => p.id === selectedForDist[0]);
-      p2_dist = points.find(p => p.id === selectedForDist[1]);
+      p1_dist = points.find(p => p.id === selectedForDist[0]); p2_dist = points.find(p => p.id === selectedForDist[1]);
       if (p1_dist && p2_dist) {
-        let dLon = Math.abs(p1_dist.lon - p2_dist.lon);
-        let dLat = Math.abs(p1_dist.lat - p2_dist.lat);
-        if (dLon > dLat) {
-          dir1 = p1_dist.lon > p2_dist.lon ? 'right' : 'left';
-          dir2 = p2_dist.lon > p1_dist.lon ? 'right' : 'left';
-        } else {
-          dir1 = p1_dist.lat > p2_dist.lat ? 'top' : 'bottom';
-          dir2 = p2_dist.lat > p1_dist.lat ? 'top' : 'bottom';
-        }
+        if (Math.abs(p1_dist.lon - p2_dist.lon) > Math.abs(p1_dist.lat - p2_dist.lat)) { dir1 = p1_dist.lon > p2_dist.lon ? 'right' : 'left'; dir2 = p2_dist.lon > p1_dist.lon ? 'right' : 'left'; } 
+        else { dir1 = p1_dist.lat > p2_dist.lat ? 'top' : 'bottom'; dir2 = p2_dist.lat > p1_dist.lat ? 'top' : 'bottom'; }
       }
     }
 
     points.forEach(p => {
-      let isDistSel = currentMode === 'dist' && selectedForDist.includes(p.id);
-      let isAreaSel = currentMode === 'area' && selectedForArea.includes(p.id);
-      let isSel = isDistSel || isAreaSel;
-
-      let tooltipContent = ''; let tipClass = ''; let tipDir = 'right'; let tipOffset = [0, 0];
-
-      if (isSel) {
-        tooltipContent = `<div style="text-align:center; line-height:1.2;"><b>${p.name}</b><br><span style="font-size:0.75rem;">X: ${p.x.toFixed(3)}<br>Y: ${p.y.toFixed(3)}</span></div>`;
-        tipClass = 'custom-tooltip';
-        if (isDistSel && p1_dist && p2_dist) {
-          tipDir = (p.id === p1_dist.id) ? dir1 : dir2;
-          tipOffset = tipDir === 'top' ? [0, -5] : tipDir === 'bottom' ? [0, 5] : tipDir === 'left' ? [-5, 0] : [5, 0];
-        } else {
-          tipDir = 'top'; tipOffset = [0, -5];
-        }
-      } else {
-        tooltipContent = p.name;
-        tipClass = 'tiny-tooltip';
-        tipDir = 'right'; tipOffset = [5, 0];
-      }
+      let isSel = (currentMode === 'dist' && selectedForDist.includes(p.id)) || (currentMode === 'area' && selectedForArea.includes(p.id));
+      let tipClass = isSel ? 'custom-tooltip' : 'tiny-tooltip', tipDir = 'right', tipOffset = isSel ? [0, 0] : [5, 0];
+      
+      if (isSel && currentMode === 'dist' && p1_dist && p2_dist) {
+        tipDir = (p.id === p1_dist.id) ? dir1 : dir2;
+        tipOffset = tipDir === 'top' ? [0, -5] : tipDir === 'bottom' ? [0, 5] : tipDir === 'left' ? [-5, 0] : [5, 0];
+      } else if (isSel) { tipDir = 'top'; tipOffset = [0, -5]; }
 
       const m = L.circleMarker([p.lat, p.lon], { radius: isSel ? 7 : 4, fillColor: isSel ? '#ea580c' : '#3b82f6', color: '#fff', weight: 2, fillOpacity: 1 });
-      
-      m.bindTooltip(tooltipContent, { permanent: true, direction: tipDir, className: tipClass, offset: tipOffset });
-
-      m.bindPopup(`
-        <div style="text-align:center; padding:2px; min-width:110px;">
-          <b style="font-size:1.1rem;">${p.name}</b><br>
-          <span style="font-size:0.8rem; color:#64748b;">X: ${p.x.toFixed(3)}<br>Y: ${p.y.toFixed(3)}</span><br>
-          <button onclick="deletePoint('${p.id}')" style="margin-top:8px; width:100%; background:#ef4444; color:white; border:none; padding:6px; border-radius:4px; font-weight:bold; cursor:pointer;">🗑️ 地図から削除</button>
-        </div>
-      `);
-
-      m.addTo(map);
-      mapMarkers[p.id] = m; bounds.push([p.lat, p.lon]);
+      m.bindTooltip(isSel ? `<div style="text-align:center; line-height:1.2;"><b>${p.name}</b><br><span style="font-size:0.75rem;">X: ${p.x.toFixed(3)}<br>Y: ${p.y.toFixed(3)}</span></div>` : p.name, { permanent: true, direction: tipDir, className: tipClass, offset: tipOffset });
+      m.bindPopup(`<div style="text-align:center; padding:2px; min-width:110px;"><b style="font-size:1.1rem;">${p.name}</b><br><span style="font-size:0.8rem; color:#64748b;">X: ${p.x.toFixed(3)}<br>Y: ${p.y.toFixed(3)}</span><br><button onclick="deletePoint('${p.id}')" style="margin-top:8px; width:100%; background:#ef4444; color:white; border:none; padding:6px; border-radius:4px; font-weight:bold; cursor:pointer;">🗑️ 地図から削除</button></div>`);
+      m.addTo(map); mapMarkers[p.id] = m; bounds.push([p.lat, p.lon]);
     });
-
     if(bounds.length > 0 && selectedForDist.length === 0 && selectedForArea.length === 0) { map.fitBounds(bounds, {padding:[50,50], maxZoom:18}); }
   }
 
   function exportCSV() {
-    if(points.length === 0) { alert("出力するデータがありません。"); return; }
-    let csvContent = "data:text/csv;charset=utf-8,\uFEFF";
-    csvContent += "測点名,X(北),Y(東),緯度,経度\n";
-    points.forEach(p => { csvContent += `${p.name},${p.x.toFixed(3)},${p.y.toFixed(3)},${p.lat.toFixed(6)},${p.lon.toFixed(6)}\n`; });
-    const encodedUri = encodeURI(csvContent);
-    const link = document.createElement("a"); link.setAttribute("href", encodedUri);
+    if(points.length === 0) return alert("出力するデータがありません。");
+    let csv = "data:text/csv;charset=utf-8,\uFEFF測点名,X(北),Y(東),緯度,経度\n";
+    points.forEach(p => { csv += `${p.name},${p.x.toFixed(3)},${p.y.toFixed(3)},${p.lat.toFixed(6)},${p.lon.toFixed(6)}\n`; });
+    const link = document.createElement("a"); link.setAttribute("href", encodeURI(csv));
     link.setAttribute("download", `測量観測データ_${new Date().toISOString().slice(0,10).replace(/-/g,"")}.csv`);
     document.body.appendChild(link); link.click(); document.body.removeChild(link);
   }
 
-  renderList(); renderMap();
+  renderList(); renderMap(); switchInputMode();
 </script>
 </body>
 </html>
