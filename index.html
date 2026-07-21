@@ -93,7 +93,6 @@
     <div class="card" id="input_card">
       <div class="card-title">
         ① 座標の取得と保存
-        <!-- GPS測位ボタン -->
         <button id="btn_gps" class="btn btn-gps" style="width: auto; padding: 4px 8px; font-size: 0.8rem;" onclick="getCurrentGNSS()">🛰️ 現在地を取得</button>
       </div>
       
@@ -196,18 +195,22 @@
   };
 
   let points = [];
-  let pointCounter = 1;
   let selectedForDist = [];
   let selectedForArea = [];
   let currentMode = 'dist';
 
+  // 初期読み込み時のスマート連番復元
   if(localStorage.getItem('surveyPoints')) {
     points = JSON.parse(localStorage.getItem('surveyPoints'));
     if(points.length > 0) {
       const lastPt = points[points.length - 1];
-      const match = lastPt.name.match(/^(?:P|GNSS)-(\d+)$/);
-      if(match) pointCounter = parseInt(match[1]) + 1;
-      document.getElementById('pt_name').value = `P-${pointCounter}`;
+      // 任意の文字(接頭辞)と数字の組み合わせを解析する正規表現
+      const match = lastPt.name.match(/^(.*?)(\d+)$/);
+      if(match) {
+        const prefix = match[1];
+        const num = parseInt(match[2]) + 1;
+        document.getElementById('pt_name').value = `${prefix}${num}`;
+      }
       document.getElementById('pt_x').value = lastPt.x;
       document.getElementById('pt_y').value = lastPt.y;
     }
@@ -227,13 +230,9 @@
     return `+proj=tmerc +lat_0=${origin[0]} +lon_0=${origin[1]} +k=0.9999 +x_0=0 +y_0=0 +ellps=GRS80 +units=m +no_defs`;
   }
 
-  // --- 新機能：現在地の測位（GNSS連携） ---
   function getCurrentGNSS() {
     const btn = document.getElementById('btn_gps');
-    if (!navigator.geolocation) {
-      alert("お使いのブラウザは位置情報に対応していません。");
-      return;
-    }
+    if (!navigator.geolocation) { alert("お使いのブラウザは位置情報に対応していません。"); return; }
     
     btn.innerText = "⏳ 測位中...";
     btn.style.backgroundColor = "#fff7ed";
@@ -242,32 +241,21 @@
       (position) => {
         const lat = position.coords.latitude;
         const lon = position.coords.longitude;
-        const accuracy = position.coords.accuracy; // 誤差(メートル)
+        const accuracy = position.coords.accuracy;
 
         try {
-          // 緯度経度から平面直角座標(X, Y)へ逆変換（Proj4jsは[経度, 緯度]の順）
           const xy = proj4('EPSG:4326', getProjDef(), [lon, lat]);
-          const y = xy[0]; // 東西(Easting)
-          const x = xy[1]; // 南北(Northing)
+          const y = xy[0]; 
+          const x = xy[1]; 
 
           document.getElementById('pt_x').value = x.toFixed(3);
           document.getElementById('pt_y').value = y.toFixed(3);
           
-          // 点名がデフォルトのままならGNSS用に変更
-          const currentName = document.getElementById('pt_name').value;
-          if(currentName.startsWith("P-")) {
-            document.getElementById('pt_name').value = `GNSS-${pointCounter}`;
-          }
-
           btn.innerText = "🛰️ 現在地を取得";
           btn.style.backgroundColor = "white";
 
-          // スマホのGPS精度を表示（RTKレシーバー連携の確認用）
           alert(`現在地を測位しました。\n・推定誤差(精度): 約 ${accuracy.toFixed(2)} m\n※値を確認して「＋ ストックに追加」を押してください。`);
-          
           checkDuplicate();
-          
-          // 地図を現在地にジャンプ
           map.setView([lat, lon], 17);
 
         } catch (e) {
@@ -307,7 +295,7 @@
   }
 
   function addPoint() {
-    const name = document.getElementById('pt_name').value.trim() || `P-${pointCounter}`;
+    const name = document.getElementById('pt_name').value.trim() || `P-${Date.now().toString().slice(-4)}`;
     const xStr = document.getElementById('pt_x').value;
     const yStr = document.getElementById('pt_y').value;
     if(xStr === "" || yStr === "") { alert("X座標とY座標を入力してください。"); return; }
@@ -316,9 +304,17 @@
       const lonlat = proj4(getProjDef(), 'EPSG:4326', [y, x]);
       points.push({ id: Date.now().toString(), name: name, x: x, y: y, lat: lonlat[1], lon: lonlat[0] });
       savePoints();
-      const match = name.match(/^(?:P|GNSS)-(\d+)$/);
-      if(match) { pointCounter = parseInt(match[1]) + 1; document.getElementById('pt_name').value = `P-${pointCounter}`; } 
-      else { document.getElementById('pt_name').value = ""; }
+      
+      // 追加時のスマート連番機能（任意のプレフィックスに対応）
+      const match = name.match(/^(.*?)(\d+)$/);
+      if(match) {
+        const prefix = match[1];
+        const num = parseInt(match[2]) + 1;
+        document.getElementById('pt_name').value = `${prefix}${num}`;
+      } else {
+        document.getElementById('pt_name').value = "";
+      }
+      
       document.getElementById('dup_warning').style.display = 'none';
       renderList(); renderMap();
     } catch (e) { alert("座標系の変換でエラーが発生しました。"); }
@@ -336,7 +332,7 @@
 
   function clearAllPoints() {
     if(confirm("すべてのストックを削除しますか？")) {
-      points = []; selectedForDist = []; selectedForArea = []; pointCounter = 1;
+      points = []; selectedForDist = []; selectedForArea = [];
       document.getElementById('pt_name').value = "P-1"; document.getElementById('pt_x').value = ""; document.getElementById('pt_y').value = "";
       savePoints(); renderList(); renderMap(); calcDistance(); calcArea();
     }
