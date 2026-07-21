@@ -1,4 +1,4 @@
-const CACHE_NAME = 'survey-app-v1.3'; // ←ここを v1.3 に変更
+const CACHE_NAME = 'survey-app-v1.4'; // ←ここを v1.4 に変更
 const ASSETS_TO_CACHE = [
   './index.html',
   './manifest.json',
